@@ -1,3 +1,3 @@
-uvicorn application:app --reload
-npm run watch
-npm run dev
+- uvicorn application:app --reload
+- npm run watch
+- npm run dev
