@@ -3,8 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import base64
 import google.generativeai as genai
+import re
+import os
+from dotenv import load_dotenv
 
-genai.configure(api_key="AIzaSyA98wiXCL7d6KZX0_IFhxVtUyXGkBH1a-o")
+load_dotenv()
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 MODEL_NAME = "models/gemini-2.5-flash-preview-05-20"
 
 app = FastAPI()
@@ -31,6 +36,16 @@ class ContinueInput(BaseModel):
     id: str
     prompt: str
 
+def decode_base64_image(data_url: str) -> bytes:
+    if not data_url.startswith("data:image"):
+        raise ValueError("Expected base64 image data URL.")
+
+    match = re.match(r"^data:image/\w+;base64,(.+)", data_url)
+    if not match:
+        raise ValueError("Invalid base64 image format.")
+
+    base64_str = match.group(1)
+    return base64.b64decode(base64_str + '===')
 
 def chat_to_serializable(chat):
     return [
@@ -84,7 +99,7 @@ async def branch_chat(data: BranchInput):
     if data.type == "text":
         message = f"{data.prompt}\n\nText:\n{data.content}"
     elif data.type == "image":
-        image_bytes = base64.b64decode(data.content)
+        image_bytes = decode_base64_image(data.content)
         message = [{"mime_type": "image/png", "data": image_bytes}, data.prompt]
     else:
         raise HTTPException(status_code=400, detail="Invalid type. Use 'text' or 'image'.")
