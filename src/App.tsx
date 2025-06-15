@@ -198,10 +198,7 @@ export function App() {
           )}
         </PdfLoader>
       </div>
-      <Sidebar
-        highlights={highlights}
-        resetHighlights={resetHighlights}
-      />
+      <Sidebar highlights={highlights} resetHighlights={resetHighlights} />
     </div>
   );
 }

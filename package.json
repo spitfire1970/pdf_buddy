@@ -22,7 +22,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "watch": "tsc --noEmit --watch --project tsconfig.app.json",
+    "watch": "tsc --noEmit --watch --project tsconfig.json",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -47,7 +47,7 @@
     "url": "https://github.com/agentcooper/react-pdf-highlighter/issues"
   },
   "devDependencies": {
-    "@biomejs/biome": "1.9.0",
+    "@biomejs/biome": "1.9.4",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

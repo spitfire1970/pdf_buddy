@@ -45,7 +45,9 @@ function cleanUpObject(obj: InputObject): CleanObject {
 
 export function Sidebar({ highlights, resetHighlights }: Props) {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [chatHistories, setChatHistories] = useState<Record<string, ChatHistoryItem[]>>({});
+  const [chatHistories, setChatHistories] = useState<
+    Record<string, ChatHistoryItem[]>
+  >({});
   const [input, setInput] = useState("");
   const [chatList, setChatList] = useState<CleanObject[]>([]);
 
@@ -57,13 +59,13 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
       const latest = filtered[0];
       if (!chatHistories[latest.id]) {
         setActiveChatId(latest.id);
-        setChatHistories(prev => ({ ...prev, [latest.id]: [] }));
+        setChatHistories((prev) => ({ ...prev, [latest.id]: [] }));
       }
     }
   }, [highlights]);
 
   const handleSendPrompt = async () => {
-    const current = chatList.find(c => c.id === activeChatId);
+    const current = chatList.find((c) => c.id === activeChatId);
     if (!current || !input.trim()) return;
 
     try {
@@ -74,7 +76,10 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
         prompt: input,
       });
 
-      setChatHistories(prev => ({ ...prev, [current.id]: res.data.history.slice(1) }));
+      setChatHistories((prev) => ({
+        ...prev,
+        [current.id]: res.data.history.slice(1),
+      }));
       setInput("");
     } catch (err) {
       console.error("Branch chat failed", err);
@@ -90,7 +95,10 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
         prompt: input,
       });
 
-      setChatHistories(prev => ({ ...prev, [activeChatId]: res.data.history.slice(1) }));
+      setChatHistories((prev) => ({
+        ...prev,
+        [activeChatId]: res.data.history.slice(1),
+      }));
       setInput("");
     } catch (err) {
       console.error("Continue chat failed", err);
