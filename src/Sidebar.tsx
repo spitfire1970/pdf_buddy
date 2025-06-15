@@ -67,10 +67,14 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
 
     setChats((prev) => ({
       ...prev,
-      [activeChatId]: [...(prev[activeChatId] || []), { role: "user", parts: [prompt] }],
+      [activeChatId]: [
+        ...(prev[activeChatId] || []),
+        { role: "user", parts: [prompt] },
+      ],
     }));
 
-    const endpoint = chats[activeChatId]?.length > 0 ? "/continue-chat/" : "/branch-chat/";
+    const endpoint =
+      chats[activeChatId]?.length > 0 ? "/continue-chat/" : "/branch-chat/";
 
     try {
       const res = await fetch("http://localhost:8000" + endpoint, {
@@ -85,7 +89,10 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
       });
       const data = await res.json();
       if (data.history) {
-        setChats((prev) => ({ ...prev, [activeChatId]: data.history.slice(1) }));
+        setChats((prev) => ({
+          ...prev,
+          [activeChatId]: data.history.slice(1),
+        }));
       }
     } catch (e) {
       console.error(e);

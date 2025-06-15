@@ -115,14 +115,8 @@ export function App() {
   }
 
   return (
-    <div className="App" style={{ display: "flex", height: "100vh" }}>
-      <div
-        style={{
-          height: "100vh",
-          width: "75vw",
-          position: "relative",
-        }}
-      >
+    <div className="App flex h-screen">
+      <div className="relative h-screen w-3/4">
         <PdfLoader url={pdfUrl} beforeLoad={<Spinner />}>
           {(pdfDocument) => (
             <PdfHighlighter
