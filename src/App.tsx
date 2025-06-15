@@ -19,8 +19,6 @@ import { Sidebar } from "./Sidebar";
 import { Spinner } from "./Spinner";
 import { LandingPage } from "./LandingPage";
 
-import "./style.css";
-
 const getNextId = () => String(Math.random()).slice(2);
 
 const parseIdFromHash = () =>
