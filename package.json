@@ -1,0 +1,63 @@
+{
+  "name": "react-pdf-highlighter",
+  "version": "8.0.0-rc.0",
+  "description": "Set of React components for PDF annotation",
+  "author": "Artem Tyurin <artem.tyurin@gmail.com>",
+  "license": "MIT",
+  "keywords": [
+    "pdf",
+    "highlight",
+    "annotator",
+    "react-component"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "main": "./dist/src/index.js",
+  "style": "./dist/style.css",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "watch": "tsc --noEmit --watch --project tsconfig.app.json",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.10",
+    "axios": "^1.10.0",
+    "lucide-react": "^0.515.0",
+    "pdfjs-dist": "4.4.168",
+    "react-pdf-highlighter": "^8.0.0-rc.0",
+    "react-rnd": "^10.4.11",
+    "ts-debounce": "^4.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentcooper/react-pdf-highlighter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/agentcooper/react-pdf-highlighter/issues"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.5",
+    "postcss-import": "^16.1.0",
+    "tailwindcss": "^4.1.10",
+    "typescript": "^5.6.2",
+    "vite": "^5.3.3",
+    "vite-plugin-dts": "^4.1.1"
+  },
+  "homepage": "https://github.com/agentcooper/react-pdf-highlighter#readme"
+}
