@@ -79,7 +79,6 @@ export function App() {
   };
 
   const addHighlight = (highlight: NewHighlight) => {
-    console.log("Saving highlight", highlight);
     setHighlights((prevHighlights) => [
       { ...highlight, id: getNextId() },
       ...prevHighlights,
@@ -91,7 +90,6 @@ export function App() {
     position: Partial<ScaledPosition>,
     content: Partial<Content>,
   ) => {
-    console.log("Updating highlight", highlightId, position, content);
     setHighlights((prevHighlights) =>
       prevHighlights.map((h) => {
         const {

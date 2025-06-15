@@ -20,8 +20,6 @@ const uploadPDF = async (pdfFile: File) => {
         },
       },
     );
-
-    console.log("Upload success:", response.data);
   } catch (err) {
     console.error("Upload failed:", err);
   }

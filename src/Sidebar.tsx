@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { IHighlight } from "react-pdf-highlighter";
-import axios from "axios";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, SendHorizonal } from "lucide-react";
 
 interface Props {
   highlights: Array<IHighlight>;
@@ -24,157 +23,146 @@ interface CleanObject {
   context: string;
 }
 
-interface ChatHistoryItem {
-  role: string;
-  parts: string[];
-}
-
 function cleanUpObject(obj: InputObject): CleanObject {
   const { id, content } = obj;
-
-  if (content.text) {
-    return { id, type: "text", context: content.text };
-  }
-
-  if (content.image) {
-    return { id, type: "image", context: content.image };
-  }
-
+  if (content.text) return { id, type: "text", context: content.text };
+  if (content.image) return { id, type: "image", context: content.image };
   throw new Error("Invalid object: content must contain either text or image.");
 }
 
+interface ChatMessage {
+  role: "user" | "model";
+  parts: string[];
+}
+
 export function Sidebar({ highlights, resetHighlights }: Props) {
+  const [view, setView] = useState<"list" | "chat">("list");
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [chatHistories, setChatHistories] = useState<
-    Record<string, ChatHistoryItem[]>
-  >({});
-  const [input, setInput] = useState("");
-  const [chatList, setChatList] = useState<CleanObject[]>([]);
+  const [prompt, setPrompt] = useState<string>("");
+  const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const filtered_highlights = highlights.map((ele) => cleanUpObject(ele));
 
   useEffect(() => {
-    const filtered = highlights.map(cleanUpObject);
-    setChatList(filtered);
-
-    if (filtered.length > 0) {
-      const latest = filtered[0];
-      if (!chatHistories[latest.id]) {
-        setActiveChatId(latest.id);
-        setChatHistories((prev) => ({ ...prev, [latest.id]: [] }));
-      }
+    if (highlights.length > 0) {
+      const { id, type, context } = filtered_highlights[0];
+      setActiveChatId(id);
+      setView("chat");
+      setChats((prev) => ({ ...prev, [id]: [] }));
     }
   }, [highlights]);
 
-  const handleSendPrompt = async () => {
-    const current = chatList.find((c) => c.id === activeChatId);
-    if (!current || !input.trim()) return;
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chats, activeChatId]);
+
+  const handleSend = async () => {
+    if (!activeChatId || !prompt.trim()) return;
+
+    const highlight = filtered_highlights.find((h) => h.id === activeChatId);
+    if (!highlight) return;
+
+    setChats((prev) => ({
+      ...prev,
+      [activeChatId]: [...(prev[activeChatId] || []), { role: "user", parts: [prompt] }],
+    }));
+
+    const endpoint = chats[activeChatId]?.length > 0 ? "/continue-chat/" : "/branch-chat/";
 
     try {
-      const res = await axios.post("http://localhost:8000/branch-chat/", {
-        id: current.id,
-        type: current.type,
-        content: current.context,
-        prompt: input,
+      const res = await fetch("http://localhost:8000" + endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: activeChatId,
+          prompt,
+          type: highlight.type,
+          content: highlight.context,
+        }),
       });
-
-      setChatHistories((prev) => ({
-        ...prev,
-        [current.id]: res.data.history.slice(1),
-      }));
-      setInput("");
-    } catch (err) {
-      console.error("Branch chat failed", err);
+      const data = await res.json();
+      if (data.history) {
+        setChats((prev) => ({ ...prev, [activeChatId]: data.history.slice(1) }));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPrompt("");
     }
   };
-
-  const handleContinueChat = async () => {
-    if (!activeChatId || !input.trim()) return;
-
-    try {
-      const res = await axios.post("http://localhost:8000/continue-chat/", {
-        id: activeChatId,
-        prompt: input,
-      });
-
-      setChatHistories((prev) => ({
-        ...prev,
-        [activeChatId]: res.data.history.slice(1),
-      }));
-      setInput("");
-    } catch (err) {
-      console.error("Continue chat failed", err);
-    }
-  };
-
-  const currentChat = activeChatId ? chatHistories[activeChatId] || [] : [];
 
   return (
-    <div className="w-[25vw] h-full overflow-auto text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50 border-l">
-      {!activeChatId ? (
-        <div className="p-4">
-          <h2 className="mb-4 text-xl font-semibold">Chats</h2>
-          <ul className="list-none p-0">
-            {chatList.map((chat, idx) => (
-              <li
-                key={idx}
-                onClick={() => setActiveChatId(chat.id)}
-                className="p-4 border-b border-neutral-500 cursor-pointer hover:bg-black/10"
-              >
-                <div className="text-sm font-medium">
-                  {chat.context.slice(0, 50).trim()}...
-                </div>
-              </li>
-            ))}
-          </ul>
-          {highlights.length > 0 && (
-            <div className="pt-4">
-              <button
-                type="button"
-                onClick={resetHighlights}
-                className="px-4 py-2 text-white bg-red-500 rounded hover:bg-red-600"
-              >
-                Reset highlights
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex flex-col h-full">
-          <div className="flex items-center gap-2 p-4 border-b">
-            <ArrowLeft
-              className="cursor-pointer"
-              onClick={() => setActiveChatId(null)}
-            />
-            <h2 className="text-lg font-semibold">Chat</h2>
-          </div>
-
-          <div className="flex-1 overflow-auto p-4 space-y-3">
-            {currentChat.map((item, idx) => (
+    <div className="w-[25vw] flex flex-col overflow-auto text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
+      {view === "list" && (
+        <>
+          <div className="p-4">
+            <h2 className="mb-4 text-xl font-semibold">Chats</h2>
+            {Object.entries(chats).map(([id, history]) => (
               <div
-                key={idx}
-                className={`rounded p-2 text-sm whitespace-pre-wrap ${item.role === "user" ? "bg-blue-100" : "bg-gray-200"}`}
+                key={id}
+                className="cursor-pointer border-b border-neutral-300 px-2 py-3 hover:bg-neutral-200"
+                onClick={() => {
+                  setActiveChatId(id);
+                  setView("chat");
+                }}
               >
-                {item.parts.join("\n")}
+                {history[0]?.parts[0]?.slice(0, 40) || "(new chat)"}...
               </div>
             ))}
           </div>
+        </>
+      )}
 
-          <div className="p-4 border-t">
+      {view === "chat" && activeChatId && (
+        <div className="flex flex-col h-full">
+          <div className="flex items-center gap-2 p-2 border-b bg-white">
+            <ArrowLeft
+              className="cursor-pointer"
+              onClick={() => setView("list")}
+            />
+            <h3 className="text-lg font-medium">Chat</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-4">
+            {(chats[activeChatId] || []).map((msg, idx) => (
+              <div
+                key={idx}
+                className={`p-2 rounded-md max-w-[80%] whitespace-pre-wrap ${
+                  msg.role === "user" ? "bg-blue-100 ml-auto" : "bg-gray-200"
+                }`}
+              >
+                {msg.parts.join("\n")}
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+          <div className="border-t flex items-center gap-2 p-2">
             <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  if ((chatHistories[activeChatId!] || []).length === 0) {
-                    handleSendPrompt();
-                  } else {
-                    handleContinueChat();
-                  }
-                }
-              }}
-              placeholder="Ask about this section..."
-              className="w-full p-2 border rounded"
+              className="flex-1 px-3 py-2 rounded border"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+              placeholder="Type a message..."
+            />
+            <SendHorizonal
+              className="text-blue-500 cursor-pointer"
+              onClick={handleSend}
             />
           </div>
+        </div>
+      )}
+
+      {view === "list" && highlights.length > 0 && (
+        <div className="p-4">
+          <button
+            type="button"
+            onClick={resetHighlights}
+            className="px-4 py-2 text-white bg-red-500 rounded hover:bg-red-600"
+          >
+            Reset highlights
+          </button>
         </div>
       )}
     </div>

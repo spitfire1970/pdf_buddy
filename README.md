@@ -1,3 +1,4 @@
 - uvicorn application:app --reload
 - npm run watch
 - npm run dev
+- npx @biomejs/biome format --write ./src
