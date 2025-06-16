@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import base64
 import google.generativeai as genai
@@ -35,6 +36,10 @@ class BranchInput(BaseModel):
 class ContinueInput(BaseModel):
     id: str
     prompt: str
+
+async def stream_chat_response(chat_obj, messages):
+    for chunk in chat_obj.stream_send(messages):
+        yield chunk.text
 
 def decode_base64_image(data_url: str) -> bytes:
     if not data_url.startswith("data:image"):

@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import type { IHighlight } from "react-pdf-highlighter";
 import { ArrowLeft, SendHorizonal } from "lucide-react";
 
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css"; // KaTeX CSS
+
 interface Props {
   highlights: Array<IHighlight>;
   resetHighlights: () => void;
@@ -104,23 +109,21 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
   return (
     <div className="w-[25vw] flex flex-col overflow-auto text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
       {view === "list" && (
-        <>
-          <div className="p-4">
-            <h2 className="mb-4 text-xl font-semibold">Chats</h2>
-            {Object.entries(chats).map(([id, history]) => (
-              <div
-                key={id}
-                className="cursor-pointer border-b border-neutral-300 px-2 py-3 hover:bg-neutral-200"
-                onClick={() => {
-                  setActiveChatId(id);
-                  setView("chat");
-                }}
-              >
-                {history[0]?.parts[0]?.slice(0, 40) || "(new chat)"}...
-              </div>
-            ))}
-          </div>
-        </>
+        <div className="p-4">
+          <h2 className="mb-4 text-xl font-semibold">Chats</h2>
+          {Object.entries(chats).map(([id, history]) => (
+            <div
+              key={id}
+              className="cursor-pointer border-b border-neutral-300 px-2 py-3 hover:bg-neutral-200"
+              onClick={() => {
+                setActiveChatId(id);
+                setView("chat");
+              }}
+            >
+              {history[0]?.parts[0]?.slice(0, 40) || "(new chat)"}...
+            </div>
+          ))}
+        </div>
       )}
 
       {view === "chat" && activeChatId && (
@@ -136,11 +139,22 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
             {(chats[activeChatId] || []).map((msg, idx) => (
               <div
                 key={idx}
-                className={`p-2 rounded-md max-w-[80%] whitespace-pre-wrap ${
+                className={`p-3 rounded-md max-w-[80%] whitespace-pre-wrap prose prose-sm break-words ${
                   msg.role === "user" ? "bg-blue-100 ml-auto" : "bg-gray-200"
                 }`}
               >
-                {msg.parts.join("\n")}
+                {msg.parts.map((part, i) => (
+                  <ReactMarkdown
+                    key={i}
+                    remarkPlugins={[remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={{
+                      p: ({ children }) => <p className="my-1">{children}</p>,
+                    }}
+                  >
+                    {part}
+                  </ReactMarkdown>
+                ))}
               </div>
             ))}
             <div ref={messagesEndRef} />
@@ -154,7 +168,7 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
               placeholder="Type a message..."
             />
             <SendHorizonal
-              className="text-blue-500 cursor-pointer"
+              className="text-accent cursor-pointer"
               onClick={handleSend}
             />
           </div>
@@ -166,7 +180,7 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
           <button
             type="button"
             onClick={resetHighlights}
-            className="px-4 py-2 text-white bg-red-500 rounded hover:bg-red-600"
+            className="px-4 py-2 text-black bg-accent rounded hover:bg-accent/80"
           >
             Reset highlights
           </button>

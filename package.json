@@ -33,10 +33,15 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.10",
     "axios": "^1.10.0",
+    "katex": "^0.16.22",
     "lucide-react": "^0.515.0",
     "pdfjs-dist": "4.4.168",
+    "react-markdown": "^10.1.0",
     "react-pdf-highlighter": "^8.0.0-rc.0",
     "react-rnd": "^10.4.11",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "ts-debounce": "^4.0.0"
   },
   "repository": {

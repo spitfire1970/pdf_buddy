@@ -2,3 +2,4 @@
 - npm run watch
 - npm run dev
 - npx @biomejs/biome format --write ./src
+- rm -rf node_modules/.vite
