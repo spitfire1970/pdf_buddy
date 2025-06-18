@@ -5,7 +5,7 @@ import { ArrowLeft, SendHorizonal } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css"; // KaTeX CSS
+import "katex/dist/katex.min.css";
 
 interface Props {
   highlights: Array<IHighlight>;

@@ -40,12 +40,10 @@ const HighlightPopup = ({
   ) : null;
 
 export function App() {
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [highlights, setHighlights] = useState<Array<IHighlight>>([]);
 
   const handleFileUpload = (file: File) => {
-    setPdfFile(file);
     const fileUrl = URL.createObjectURL(file);
     setPdfUrl(fileUrl);
   };
