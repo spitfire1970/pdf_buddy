@@ -15,8 +15,8 @@ import type {
   ScaledPosition,
 } from "react-pdf-highlighter";
 
-import { Sidebar } from "./Sidebar";
-import { Spinner } from "./Spinner";
+import { Sidebar } from "../components/Sidebar";
+import { Spinner } from "../components/Spinner";
 import { LandingPage } from "./LandingPage";
 
 const getNextId = () => String(Math.random()).slice(2);
@@ -98,9 +98,7 @@ const AskInChatPopup = ({
 };
 
 export function App() {
-  const [pdfUrl, setPdfUrl] = useState<string | null>(
-    null,
-  );
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [highlights, setHighlights] = useState<Array<IHighlight>>([]);
   const [sidebarWidth, setSidebarWidth] = useState(400); // Initial width in pixels
   const isResizingRef = useRef(false);
@@ -186,11 +184,7 @@ export function App() {
                 scrollViewerTo.current = scrollTo;
                 scrollToHighlightFromHash();
               }}
-              onSelectionFinished={(
-                position,
-                content,
-                hideTipAndSelection,
-              ) => (
+              onSelectionFinished={(position, content, hideTipAndSelection) => (
                 <AskInChatPopup
                   onConfirm={() => {
                     addHighlight({

@@ -1,8 +1,14 @@
 import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import { App } from "./pages/App";
 import "react-pdf-highlighter/dist/style.css";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 
-// biome-ignore lint/style/noNonNullAssertion: Root element must be there
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
 const container = document.getElementById("root")!;
 const root = createRoot(container);
-root.render(<App />);
+root.render(
+  <GoogleOAuthProvider clientId={googleClientId}>
+    <App />
+  </GoogleOAuthProvider>,
+);

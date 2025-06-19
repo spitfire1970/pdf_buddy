@@ -87,10 +87,20 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
     const endpoint =
       chats[activeChatId]?.length > 1 ? "/continue-chat/" : "/branch-chat/";
 
+    const token = localStorage.getItem("authToken"); // Or however you store your token
+
+    if (!token) {
+      console.error("No access token found. Please log in.");
+      return;
+    }
+
     try {
       const res = await fetch("http://localhost:8000" + endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           id: activeChatId,
           prompt: currentPrompt,
@@ -121,7 +131,7 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
       }
     } catch (e) {
       console.error(e);
-       setChats((prev) => ({
+      setChats((prev) => ({
         ...prev,
         [activeChatId]: [
           ...(prev[activeChatId] || []).slice(0, -1),
@@ -164,7 +174,7 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
             {(chats[activeChatId] || []).map((msg, idx) => (
               <div
                 key={idx}
-                className={`p-3 rounded-md max-w-[80%] whitespace-pre-wrap prose prose-sm break-words overflow-x-auto ${
+                className={`p-3 rounded-md max-w-[80%] whitespace-pre-wrap prose prose-sm break-words ${
                   msg.role === "user" ? "bg-blue-100 ml-auto" : "bg-gray-200"
                 }`}
               >
