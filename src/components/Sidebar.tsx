@@ -28,9 +28,6 @@ function cleanUpObject(obj: InputObject): CleanObject {
   throw new Error("Invalid object: content must contain either text or image.");
 }
 
-// FIX: This style block prevents wide LaTeX equations from breaking the chat bubble layout.
-// It makes the equation container scrollable on its own if it's too wide.
-// The best practice is to move this to a global .css file (e.g., index.css).
 const latexOverflowFix = `
   .prose .katex-display {
     overflow-x: auto;
@@ -40,7 +37,8 @@ const latexOverflowFix = `
 `;
 
 export function Sidebar() {
-  const { highlights, clearPdf } = usePdf();
+  // FIX: Destructure selectedPdfId from the usePdf hook
+  const { highlights, selectPdf, selectedPdfId } = usePdf();
   const { token } = useAuth();
 
   const [view, setView] = useState<"list" | "chat">("list");
@@ -48,8 +46,6 @@ export function Sidebar() {
   const [prompt, setPrompt] = useState<string>("");
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // FIX: Create a ref for the chat input element.
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filtered_highlights = useMemo(
@@ -72,8 +68,6 @@ export function Sidebar() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chats, activeChatId]);
 
-  // FIX: This effect runs whenever the view changes. If the view becomes 'chat',
-  // it focuses the input field for a better user experience.
   useEffect(() => {
     if (view === "chat") {
       setTimeout(() => inputRef.current?.focus(), 0);
@@ -81,7 +75,8 @@ export function Sidebar() {
   }, [view, activeChatId]);
 
   const handleSend = async () => {
-    if (!activeChatId || !prompt.trim() || !token) return;
+    // FIX: Add a guard to ensure we have a selectedPdfId before sending
+    if (!activeChatId || !prompt.trim() || !token || !selectedPdfId) return;
 
     const currentPrompt = prompt;
     setPrompt("");
@@ -110,7 +105,9 @@ export function Sidebar() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        // FIX: Add the required 'pdf_id' to the request body
         body: JSON.stringify({
+          pdf_id: selectedPdfId,
           id: activeChatId,
           prompt: currentPrompt,
           type: highlight.type,
@@ -142,7 +139,6 @@ export function Sidebar() {
 
   return (
     <div className="w-full h-full flex flex-col overflow-auto text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
-      {/* FIX: Applying the style tag to inject the CSS fix. */}
       <style>{latexOverflowFix}</style>
 
       {view === "list" && (
@@ -165,7 +161,7 @@ export function Sidebar() {
             ))
           ) : (
             <p className="text-gray-500 italic">
-              Highlight a section of the PDF to start a chat.
+              Highlight a section of the PDF to start a chat. Hold ⌥ and drag 
             </p>
           )}
         </div>
@@ -204,7 +200,6 @@ export function Sidebar() {
           </div>
           <div className="border-t flex items-center gap-2 p-2 bg-white">
             <input
-              // FIX: Assign the ref to the input element.
               ref={inputRef}
               className="flex-1 px-3 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={prompt}
@@ -223,10 +218,10 @@ export function Sidebar() {
       <div className="p-4 mt-auto border-t">
         <button
           type="button"
-          onClick={clearPdf}
+          onClick={() => selectPdf(null)}
           className="w-full px-4 py-2 text-white font-semibold bg-gray-600 rounded hover:bg-gray-700"
         >
-          Close PDF & Start Over
+          Back to Dashboard
         </button>
       </div>
     </div>

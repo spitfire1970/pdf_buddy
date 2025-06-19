@@ -1,77 +1,11 @@
-import { useRef, useState } from "react";
-import type { ChangeEvent, DragEvent } from "react";
-import axios from "axios";
 import { GoogleLogin } from "@react-oauth/google";
 import { useAuth } from "../contexts/AuthContext";
-import { usePdf } from "../contexts/PdfContext";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export function LandingPage() {
-  const { user, login, logout, token } = useAuth();
-  const { uploadPdf } = usePdf();
-  const [isDragging, setIsDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handlePdfUploadToServer = async (pdfFile: File) => {
-    if (!token) {
-      console.error("No auth token found.");
-      return;
-    }
-    const formData = new FormData();
-    formData.append("file", pdfFile);
-
-    try {
-      await axios.post(`${API_URL}/upload-pdf/`, formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      uploadPdf(pdfFile);
-    } catch (err) {
-      console.error("Upload failed:", err);
-    }
-  };
-
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === "application/pdf") {
-      handlePdfUploadToServer(file);
-    }
-  };
-
-  const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file && file.type === "application/pdf") {
-      handlePdfUploadToServer(file);
-    }
-  };
+  const { login } = useAuth();
 
   return (
-    <div className="min-h-screen w-full bg-black text-white flex items-center justify-center px-4 py-12 relative">
-      {user && (
-        <div className="absolute top-4 right-4 flex items-center bg-black/50 p-2 rounded-full z-10">
-          <img
-            src={user.picture}
-            alt={user.name}
-            referrerPolicy="no-referrer"
-            className="w-8 h-8 rounded-full mr-3 flex-shrink-0"
-          />
-          <span className="text-white text-sm font-medium mr-4">
-            {user.name}
-          </span>
-          <button
-            onClick={logout}
-            className="text-sm text-gray-400 hover:text-white pr-2"
-          >
-            Logout
-          </button>
-        </div>
-      )}
-
+    <div className="min-h-screen w-full bg-black text-white flex items-center justify-center px-4 py-12">
       <div className="max-w-7xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
         <div className="p-8 bg-black/60 border border-gray-700 rounded-3xl backdrop-blur-xl shadow-2xl">
           <h1 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-tight">
@@ -83,63 +17,19 @@ export function LandingPage() {
             wrote it.
           </p>
 
-          {user ? (
-            <label
-              htmlFor="pdf-upload"
-              onDrop={handleDrop}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              className={`group transition-all duration-300 flex flex-col items-center justify-center px-8 py-14 border-2 border-dashed rounded-2xl cursor-pointer ${
-                isDragging
-                  ? "border-main bg-main/10"
-                  : "border-gray-600 hover:border-main hover:bg-main/5"
-              }`}
-            >
-              <svg
-                className="w-12 h-12 text-main mb-3 animate-pulse"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  d="M12 16V8m0 0l3 3m-3-3L9 11"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M3 15v1a4 4 0 004 4h10a4 4 0 004-4v-1"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span className="text-white text-lg font-semibold">
-                {isDragging
-                  ? "Drop your PDF here"
-                  : "Click or Drag your PDF to start"}
-              </span>
-              <span className="text-sm text-gray-400 mt-1">
-                Only .pdf files are supported
-              </span>
-            </label>
-          ) : (
-            <div className="flex flex-col items-center justify-center px-8 py-14 border-2 border-dashed border-gray-600 rounded-2xl">
-              <span className="text-white text-lg font-semibold text-center mb-4">
-                Sign in to Get Started
-              </span>
-              <p className="text-sm text-gray-400 text-center mb-6">
-                Create an account or log in to upload and chat with your
-                documents.
-              </p>
-              <GoogleLogin
-                onSuccess={login}
-                onError={() => console.log("Login Failed")}
-              />
-            </div>
-          )}
+          <div className="flex flex-col items-center justify-center px-8 py-14 border-2 border-dashed border-gray-600 rounded-2xl">
+            <span className="text-white text-lg font-semibold text-center mb-4">
+              Sign in to Get Started
+            </span>
+            <p className="text-sm text-gray-400 text-center mb-6">
+              Create an account or log in to upload and chat with your
+              documents.
+            </p>
+            <GoogleLogin
+              onSuccess={login}
+              onError={() => console.log("Login Failed")}
+            />
+          </div>
 
           <div className="mt-8 text-center">
             <div className="mb-6 p-3 bg-gray-800/50 border border-gray-700 rounded-xl text-sm">
@@ -216,15 +106,6 @@ export function LandingPage() {
               </li>
             </ul>
           </div>
-
-          <input
-            id="pdf-upload"
-            type="file"
-            accept=".pdf"
-            ref={inputRef}
-            onChange={handleFileChange}
-            className="hidden"
-          />
         </div>
 
         <div className="w-full h-full">

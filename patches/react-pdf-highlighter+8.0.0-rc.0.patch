@@ -1,0 +1,500 @@
+diff --git a/node_modules/react-pdf-highlighter/dist/src/components/MouseSelection.js b/node_modules/react-pdf-highlighter/dist/src/components/MouseSelection.js
+index 831fd8b..1e3f066 100644
+--- a/node_modules/react-pdf-highlighter/dist/src/components/MouseSelection.js
++++ b/node_modules/react-pdf-highlighter/dist/src/components/MouseSelection.js
+@@ -2,13 +2,16 @@ import { jsx } from "react/jsx-runtime";
+ import { useState, useRef, useEffect, useCallback } from "react";
+ import { isHTMLElement } from "../lib/pdfjs-dom.js";
+ import styles from "../style/MouseSelection.module.css.js";
++
+ const getBoundingRect = (start, end) => ({
+   left: Math.min(end.x, start.x),
+   top: Math.min(end.y, start.y),
+   width: Math.abs(end.x - start.x),
+   height: Math.abs(end.y - start.y)
+ });
++
+ const shouldRender = (boundingRect) => boundingRect.width >= 1 && boundingRect.height >= 1;
++
+ function MouseSelection({
+   onSelection,
+   onDragStart,
+@@ -16,28 +19,28 @@ function MouseSelection({
+   shouldStart,
+   onChange
+ }) {
+-  const [locked, setLocked] = useState(false);
+   const [start, setStart] = useState(null);
+   const [end, setEnd] = useState(null);
+   const rootRef = useRef(null);
+-  const startRef = useRef(start);
+-  const lockedRef = useRef(locked);
+-  useEffect(() => {
+-    startRef.current = start;
+-  }, [start]);
+-  useEffect(() => {
+-    lockedRef.current = locked;
+-  }, [locked]);
++
++  const isHighlightingRef = useRef(false);
++  const lastMouseEventRef = useRef(null);
++  const startTargetRef = useRef(null);
++  const startCoordsRef = useRef(null);
++
+   const reset = useCallback(() => {
+     onDragEnd();
+     setStart(null);
+     setEnd(null);
+-    setLocked(false);
++    isHighlightingRef.current = false;
++    startTargetRef.current = null;
++    startCoordsRef.current = null;
+   }, [onDragEnd]);
++
+   useEffect(() => {
+-    const isVisible = Boolean(start && end);
+-    onChange(isVisible);
++    onChange(Boolean(start && end));
+   }, [start, end, onChange]);
++
+   useEffect(() => {
+     const root = rootRef.current;
+     if (!root) {
+@@ -47,6 +50,7 @@ function MouseSelection({
+     if (!container || !isHTMLElement(container)) {
+       return;
+     }
++
+     const containerCoords = (pageX, pageY) => {
+       const containerBoundingRect = container.getBoundingClientRect();
+       return {
+@@ -54,58 +58,78 @@ function MouseSelection({
+         y: pageY - containerBoundingRect.top + container.scrollTop - window.scrollY
+       };
+     };
++
+     const mouseMoveHandler = (event) => {
+-      if (!startRef.current || lockedRef.current) {
+-        return;
++      lastMouseEventRef.current = event;
++      if (isHighlightingRef.current) {
++        setEnd(containerCoords(event.pageX, event.pageY));
+       }
+-      setEnd(containerCoords(event.pageX, event.pageY));
+     };
+-    const mouseDownHandler = (event) => {
+-      if (!shouldStart(event)) {
+-        reset();
++
++    const keyDownHandler = (event) => {
++      if (isHighlightingRef.current || !shouldStart(event)) {
+         return;
+       }
+-      const startTarget = event.target;
+-      if (!(startTarget instanceof Element) || !isHTMLElement(startTarget)) {
++      
++      const lastMouseEvent = lastMouseEventRef.current;
++      if (!lastMouseEvent) {
+         return;
+       }
++
++      const target = lastMouseEvent.target;
++      if (!(target instanceof Element) || !isHTMLElement(target) || !Boolean(target.closest(".page"))) {
++        return;
++      }
++
+       onDragStart();
+-      setStart(containerCoords(event.pageX, event.pageY));
+-      setEnd(null);
+-      setLocked(false);
+-      const mouseUpHandler = (event2) => {
+-        var _a;
+-        (_a = event2.currentTarget) == null ? void 0 : _a.removeEventListener("mouseup", mouseUpHandler);
+-        const currentStart = startRef.current;
+-        if (!currentStart) {
+-          return;
+-        }
+-        if (!(event2 instanceof MouseEvent)) {
+-          return;
+-        }
+-        const endCoords = containerCoords(event2.pageX, event2.pageY);
+-        const boundingRect = getBoundingRect(currentStart, endCoords);
+-        if (!(event2.target instanceof Element) || !isHTMLElement(event2.target) || !container.contains(event2.target) || !shouldRender(boundingRect)) {
+-          reset();
+-          return;
+-        }
+-        setEnd(endCoords);
+-        setLocked(true);
+-        onSelection(startTarget, boundingRect, reset);
+-        onDragEnd();
+-      };
+-      const doc = container.ownerDocument;
+-      if (doc == null ? void 0 : doc.body) {
+-        doc.body.addEventListener("mouseup", mouseUpHandler);
++      isHighlightingRef.current = true;
++      const newStartCoords = containerCoords(lastMouseEvent.pageX, lastMouseEvent.pageY);
++      startCoordsRef.current = newStartCoords;
++      startTargetRef.current = target;
++      
++      setStart(newStartCoords);
++      setEnd(newStartCoords);
++    };
++
++    const keyUpHandler = () => {
++      if (!isHighlightingRef.current) {
++        return;
++      }
++
++      isHighlightingRef.current = false;
++
++      const startTarget = startTargetRef.current;
++      const startCoords = startCoordsRef.current;
++      const lastMouseEvent = lastMouseEventRef.current;
++      
++      if (!startTarget || !startCoords || !lastMouseEvent) {
++        reset();
++        return;
++      }
++
++      const endCoords = containerCoords(lastMouseEvent.pageX, lastMouseEvent.pageY);
++      const boundingRect = getBoundingRect(startCoords, endCoords);
++
++      if (!shouldRender(boundingRect)) {
++        reset();
++        return;
+       }
++      
++      setEnd(endCoords); 
++      onSelection(startTarget, boundingRect, reset);
+     };
++
++    document.addEventListener("keydown", keyDownHandler);
++    document.addEventListener("keyup", keyUpHandler);
+     container.addEventListener("mousemove", mouseMoveHandler);
+-    container.addEventListener("mousedown", mouseDownHandler);
++
+     return () => {
++      document.removeEventListener("keydown", keyDownHandler);
++      document.removeEventListener("keyup", keyUpHandler);
+       container.removeEventListener("mousemove", mouseMoveHandler);
+-      container.removeEventListener("mousedown", mouseDownHandler);
+     };
+-  }, [shouldStart, onDragStart, onDragEnd, onSelection, reset]);
++  }, [shouldStart, onDragStart, onDragEnd, onSelection, reset, onChange]);
++
+   return /* @__PURE__ */ jsx("div", { ref: rootRef, children: start && end && /* @__PURE__ */ jsx(
+     "div",
+     {
+@@ -114,6 +138,7 @@ function MouseSelection({
+     }
+   ) });
+ }
++
+ export {
+   MouseSelection
+ };
+\ No newline at end of file
+diff --git a/node_modules/react-pdf-highlighter/dist/src/components/PdfHighlighter.js b/node_modules/react-pdf-highlighter/dist/src/components/PdfHighlighter.js
+index d64a8a4..37dbc48 100644
+--- a/node_modules/react-pdf-highlighter/dist/src/components/PdfHighlighter.js
++++ b/node_modules/react-pdf-highlighter/dist/src/components/PdfHighlighter.js
+@@ -14,7 +14,9 @@ import styles from "../style/PdfHighlighter.module.css.js";
+ import { HighlightLayer } from "./HighlightLayer.js";
+ import { MouseSelection } from "./MouseSelection.js";
+ import { TipContainer } from "./TipContainer.js";
++
+ const EMPTY_ID = "empty-id";
++
+ class PdfHighlighter extends PureComponent {
+   constructor(props) {
+     super(props);
+@@ -33,8 +35,10 @@ class PdfHighlighter extends PureComponent {
+     __publicField(this, "containerNode", null);
+     __publicField(this, "containerNodeRef");
+     __publicField(this, "highlightRoots", {});
+-    __publicField(this, "unsubscribe", () => {
+-    });
++    __publicField(this, "unsubscribe", () => {});
++
++    __publicField(this, "resetSelection", null);
++
+     __publicField(this, "attachRef", (eventBus) => {
+       var _a;
+       const { resizeObserver: observer } = this;
+@@ -62,6 +66,7 @@ class PdfHighlighter extends PureComponent {
+         };
+       }
+     });
++
+     __publicField(this, "hideTipAndSelection", () => {
+       this.setState({
+         tipPosition: null,
+@@ -71,7 +76,12 @@ class PdfHighlighter extends PureComponent {
+         { ghostHighlight: null, tip: null },
+         () => this.renderHighlightLayers()
+       );
++      if (this.resetSelection) {
++        this.resetSelection();
++        this.resetSelection = null;
++      }
+     });
++
+     __publicField(this, "renderTip", () => {
+       const { tipPosition, tipChildren } = this.state;
+       if (!tipPosition) return null;
+@@ -106,9 +116,11 @@ class PdfHighlighter extends PureComponent {
+         }
+       );
+     });
++
+     __publicField(this, "onTextLayerRendered", () => {
+       this.renderHighlightLayers();
+     });
++
+     __publicField(this, "scrollTo", (highlight) => {
+       const { pageNumber, boundingRect, usePdfCoordinates } = highlight.position;
+       this.viewer.container.removeEventListener("scroll", this.onScroll);
+@@ -136,11 +148,13 @@ class PdfHighlighter extends PureComponent {
+         this.viewer.container.addEventListener("scroll", this.onScroll);
+       }, 100);
+     });
++
+     __publicField(this, "onDocumentReady", () => {
+       const { scrollRef } = this.props;
+       this.handleScaleValue();
+       scrollRef(this.scrollTo);
+     });
++
+     __publicField(this, "onSelectionChange", () => {
+       const container = this.containerNode;
+       if (!container) {
+@@ -164,6 +178,7 @@ class PdfHighlighter extends PureComponent {
+       });
+       this.debouncedAfterSelection();
+     });
++
+     __publicField(this, "onScroll", () => {
+       const { onScrollChange } = this.props;
+       onScrollChange();
+@@ -175,6 +190,7 @@ class PdfHighlighter extends PureComponent {
+       );
+       this.viewer.container.removeEventListener("scroll", this.onScroll);
+     });
++
+     __publicField(this, "onMouseDown", (event) => {
+       if (!(event.target instanceof Element) || !isHTMLElement(event.target)) {
+         return;
+@@ -184,11 +200,13 @@ class PdfHighlighter extends PureComponent {
+       }
+       this.hideTipAndSelection();
+     });
++
+     __publicField(this, "handleKeyDown", (event) => {
+       if (event.code === "Escape") {
+         this.hideTipAndSelection();
+       }
+     });
++
+     __publicField(this, "afterSelection", () => {
+       const { onSelectionFinished } = this.props;
+       const { isCollapsed, range } = this.state;
+@@ -228,6 +246,7 @@ class PdfHighlighter extends PureComponent {
+         )
+       );
+     });
++
+     __publicField(this, "debouncedAfterSelection", r(this.afterSelection, 500));
+     __publicField(this, "handleScaleValue", () => {
+       if (this.viewer) {
+@@ -240,6 +259,7 @@ class PdfHighlighter extends PureComponent {
+     }
+     this.containerNodeRef = React.createRef();
+   }
++
+   componentDidMount() {
+     this.init();
+   }
+@@ -252,6 +272,7 @@ class PdfHighlighter extends PureComponent {
+       this.renderHighlightLayers();
+     }
+   }
++
+   async init() {
+     const { pdfDocument } = this.props;
+     const pdfjs = await import("../../node_modules/pdfjs-dist/web/pdf_viewer.js");
+@@ -266,7 +287,6 @@ class PdfHighlighter extends PureComponent {
+     this.viewer = this.viewer || new pdfjs.PDFViewer({
+       container: this.containerNodeRef.current,
+       eventBus,
+-      // enhanceTextSelection: true, // deprecated. https://github.com/mozilla/pdf.js/issues/9943#issuecomment-409369485
+       textLayerMode: 2,
+       removePageBorders: true,
+       linkService
+@@ -276,9 +296,11 @@ class PdfHighlighter extends PureComponent {
+     this.viewer.setDocument(pdfDocument);
+     this.attachRef(eventBus);
+   }
++
+   componentWillUnmount() {
+     this.unsubscribe();
+   }
++
+   findOrCreateHighlightLayer(page) {
+     const { textLayer } = this.viewer.getPageView(page - 1) || {};
+     if (!textLayer) {
+@@ -290,12 +312,13 @@ class PdfHighlighter extends PureComponent {
+       ".PdfHighlighter__highlight-layer"
+     );
+   }
++
+   groupHighlightsByPage(highlights) {
+     const { ghostHighlight } = this.state;
+     const allHighlights = [...highlights, ghostHighlight].filter(
+       Boolean
+     );
+-    const pageNumbers = /* @__PURE__ */ new Set();
++    const pageNumbers = new Set();
+     for (const highlight of allHighlights) {
+       pageNumbers.add(highlight.position.pageNumber);
+       for (const rect of highlight.position.rects) {
+@@ -331,6 +354,7 @@ class PdfHighlighter extends PureComponent {
+     }
+     return groupedHighlights;
+   }
++
+   showTip(highlight, content) {
+     const { isCollapsed, ghostHighlight, isAreaSelectionInProgress } = this.state;
+     const highlightInProgress = !isCollapsed || ghostHighlight;
+@@ -339,12 +363,8 @@ class PdfHighlighter extends PureComponent {
+     }
+     this.setTip(highlight.position, content);
+   }
+-  scaledPositionToViewport({
+-    pageNumber,
+-    boundingRect,
+-    rects,
+-    usePdfCoordinates
+-  }) {
++
++  scaledPositionToViewport({ pageNumber, boundingRect, rects, usePdfCoordinates }) {
+     const viewport = this.viewer.getPageView(pageNumber - 1).viewport;
+     return {
+       boundingRect: scaledToViewport(boundingRect, viewport, usePdfCoordinates),
+@@ -354,11 +374,8 @@ class PdfHighlighter extends PureComponent {
+       pageNumber
+     };
+   }
+-  viewportPositionToScaled({
+-    pageNumber,
+-    boundingRect,
+-    rects
+-  }) {
++
++  viewportPositionToScaled({ pageNumber, boundingRect, rects }) {
+     const viewport = this.viewer.getPageView(pageNumber - 1).viewport;
+     return {
+       boundingRect: viewportToScaled(boundingRect, viewport),
+@@ -366,22 +383,26 @@ class PdfHighlighter extends PureComponent {
+       pageNumber
+     };
+   }
++
+   screenshot(position, pageNumber) {
+     const canvas = this.viewer.getPageView(pageNumber - 1).canvas;
+     return getAreaAsPNG(canvas, position);
+   }
++
+   setTip(position, inner) {
+     this.setState({
+       tipPosition: position,
+       tipChildren: inner
+     });
+   }
++
+   toggleTextSelection(flag) {
+     if (!this.viewer.viewer) {
+       return;
+     }
+     this.viewer.viewer.classList.toggle(styles.disableSelection, flag);
+   }
++
+   render() {
+     const { onSelectionFinished, enableAreaSelection } = this.props;
+     return /* @__PURE__ */ jsx("div", { onPointerDown: this.onMouseDown, children: /* @__PURE__ */ jsxs(
+@@ -399,8 +420,9 @@ class PdfHighlighter extends PureComponent {
+               onDragStart: () => this.toggleTextSelection(true),
+               onDragEnd: () => this.toggleTextSelection(false),
+               onChange: (isVisible) => this.setState({ isAreaSelectionInProgress: isVisible }),
+-              shouldStart: (event) => enableAreaSelection(event) && event.target instanceof Element && isHTMLElement(event.target) && Boolean(event.target.closest(".page")),
++              shouldStart: (event) => enableAreaSelection(event),
+               onSelection: (startTarget, boundingRect, resetSelection) => {
++                this.resetSelection = resetSelection;
+                 const page = getPageFromElement(startTarget);
+                 if (!page) {
+                   return;
+@@ -437,7 +459,7 @@ class PdfHighlighter extends PureComponent {
+                           }
+                         },
+                         () => {
+-                          resetSelection();
++                          this.hideTipAndSelection();
+                           this.renderHighlightLayers();
+                         }
+                       );
+@@ -451,11 +473,12 @@ class PdfHighlighter extends PureComponent {
+       }
+     ) });
+   }
++
+   renderHighlightLayers() {
+     const { pdfDocument } = this.props;
+     for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber++) {
+       const highlightRoot = this.highlightRoots[pageNumber];
+-      if (highlightRoot == null ? void 0 : highlightRoot.container.isConnected) {
++      if (highlightRoot?.container.isConnected) {
+         this.renderHighlightLayer(highlightRoot.reactRoot, pageNumber);
+       } else {
+         const highlightLayer = this.findOrCreateHighlightLayer(pageNumber);
+@@ -470,6 +493,7 @@ class PdfHighlighter extends PureComponent {
+       }
+     }
+   }
++
+   renderHighlightLayer(root, pageNumber) {
+     const { highlightTransform, highlights } = this.props;
+     const { tip, scrolledToHighlightId } = this.state;
+@@ -495,9 +519,11 @@ class PdfHighlighter extends PureComponent {
+     );
+   }
+ }
++
+ __publicField(PdfHighlighter, "defaultProps", {
+   pdfScaleValue: "auto"
+ });
++
+ export {
+   PdfHighlighter
+ };
+\ No newline at end of file
+diff --git a/node_modules/react-pdf-highlighter/dist/src/components/Tip.js b/node_modules/react-pdf-highlighter/dist/src/components/Tip.js
+index 34a559d..24949fc 100644
+--- a/node_modules/react-pdf-highlighter/dist/src/components/Tip.js
++++ b/node_modules/react-pdf-highlighter/dist/src/components/Tip.js
+@@ -31,7 +31,7 @@ class Tip extends Component {
+           onOpen();
+           this.setState({ compact: false });
+         },
+-        children: "Add highlight"
++        children: "Create new chat"
+       }
+     ) : /* @__PURE__ */ jsxs(
+       "form",
+@@ -71,7 +71,7 @@ class Tip extends Component {
+               _emoji
+             ] }, _emoji)) })
+           ] }),
+-          /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx("input", { type: "submit", value: "Save" }) })
++          /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx("input", { type: "submit", value: "Add comment" }) })
+         ]
+       }
+     ) });

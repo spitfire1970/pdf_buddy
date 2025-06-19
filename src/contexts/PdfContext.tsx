@@ -1,43 +1,92 @@
-import { createContext, useState, useContext, useCallback } from "react";
+import {
+  createContext,
+  useState,
+  useContext,
+  useCallback,
+  useEffect,
+} from "react";
 import { type ReactNode } from "react";
 import type { IHighlight, NewHighlight } from "react-pdf-highlighter";
+import axios from "axios";
+import { useAuth } from "./AuthContext";
 
 const getNextId = () => String(Math.random()).slice(2);
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+interface Pdf {
+  id: string;
+  filename: string;
+  upload_date: string;
+}
 
 interface PdfContextType {
-  pdfUrl: string | null;
+  pdfs: Pdf[];
+  setPdfs: (pdfs: Pdf[]) => void;
+  selectedPdfId: string | null;
+  selectPdf: (id: string | null) => void;
+  pdfUrl: string | null; // This will now be a local blob URL
+  pdfLoading: boolean;
   highlights: Array<IHighlight>;
-  uploadPdf: (file: File) => void;
   addHighlight: (highlight: NewHighlight) => void;
   resetHighlights: () => void;
-  clearPdf: () => void;
 }
 
 const PdfContext = createContext<PdfContextType | undefined>(undefined);
 
 export function PdfProvider({ children }: { children: ReactNode }) {
+  const { token } = useAuth();
+  const [pdfs, setPdfs] = useState<Pdf[]>([]);
+  const [selectedPdfId, setSelectedPdfId] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState<boolean>(false);
   const [highlights, setHighlights] = useState<Array<IHighlight>>([]);
 
-  const uploadPdf = useCallback(
-    (file: File) => {
-      if (pdfUrl) {
-        URL.revokeObjectURL(pdfUrl);
-      }
-      const fileUrl = URL.createObjectURL(file);
-      setPdfUrl(fileUrl);
-      setHighlights([]);
-    },
-    [pdfUrl],
-  );
-
-  const clearPdf = useCallback(() => {
+  // Effect to fetch PDF blob when selectedPdfId changes
+  useEffect(() => {
+    // If there's an old blob URL, revoke it to prevent memory leaks
     if (pdfUrl) {
       URL.revokeObjectURL(pdfUrl);
     }
-    setPdfUrl(null);
+
+    if (!selectedPdfId || !token) {
+      setPdfUrl(null);
+      return;
+    }
+
+    const fetchPdfBlob = async () => {
+      setPdfLoading(true);
+      try {
+        const response = await axios.get(`${API_URL}/pdfs/${selectedPdfId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: "blob", // Important: we want the raw file data
+        });
+        const blob = new Blob([response.data], { type: "application/pdf" });
+        const localUrl = URL.createObjectURL(blob);
+        setPdfUrl(localUrl);
+      } catch (error) {
+        console.error("Failed to fetch PDF blob:", error);
+        setPdfUrl(null);
+      } finally {
+        setPdfLoading(false);
+      }
+    };
+
+    fetchPdfBlob();
+
+    // Cleanup function to revoke the blob URL when the component unmounts
+    // or when the dependency array changes before the next run.
+    return () => {
+      if (pdfUrl) {
+        URL.revokeObjectURL(pdfUrl);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPdfId, token]);
+
+  const selectPdf = useCallback((id: string | null) => {
+    setSelectedPdfId(id);
     setHighlights([]);
-  }, [pdfUrl]);
+  }, []);
 
   const addHighlight = useCallback((highlight: NewHighlight) => {
     setHighlights((prev) => [{ ...highlight, id: getNextId() }, ...prev]);
@@ -48,12 +97,15 @@ export function PdfProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = {
+    pdfs,
+    setPdfs,
+    selectedPdfId,
+    selectPdf,
     pdfUrl,
+    pdfLoading,
     highlights,
-    uploadPdf,
     addHighlight,
     resetHighlights,
-    clearPdf,
   };
 
   return <PdfContext.Provider value={value}>{children}</PdfContext.Provider>;

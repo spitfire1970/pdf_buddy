@@ -10,6 +10,8 @@ import type { IHighlight } from "react-pdf-highlighter";
 import { Sidebar } from "../components/Sidebar";
 import { Spinner } from "../components/Spinner";
 import { LandingPage } from "./LandingPage";
+import { Home } from "./Home";
+import { useAuth } from "../contexts/AuthContext";
 import { usePdf } from "../contexts/PdfContext";
 import { useSidebarResizing } from "../hooks/useSidebarResizing";
 
@@ -28,8 +30,6 @@ const HighlightPopup = ({
     </div>
   ) : null;
 
-// FIX: Restored the original AskInChatPopup with its keydown and click-outside logic.
-// This is the correct way to handle this kind of temporary, event-driven UI.
 const AskInChatPopup = ({
   onConfirm,
   onCancel,
@@ -72,20 +72,23 @@ const AskInChatPopup = ({
   return (
     <div
       ref={popupRef}
-      className="bg-main p-2 rounded-md shadow-lg border border-black-300"
+      className="bg-accent p-1 rounded-md shadow-lg border border-black-300 cursor-pointer"
     >
       <button
         onClick={onConfirm}
-        className="px-3 py-1 bg-accent text-black text-sm font-semibold rounded-md hover:bg-accent/90 transition"
+        className="px-3 py-1 bg-accent text-black text-sm font-semibold rounded-md hover:bg-accent/90 transition cursor-pointer"
       >
-        ask in chat
+        Ask in chat
       </button>
     </div>
   );
 };
 
 export function App() {
-  const { pdfUrl, highlights, addHighlight } = usePdf();
+  const { user } = useAuth();
+  // Get pdfUrl (now a blob url) and the new pdfLoading state
+  const { pdfUrl, highlights, addHighlight, selectedPdfId, pdfLoading } =
+    usePdf();
   const { sidebarWidth, handleMouseDown } = useSidebarResizing(400);
   const scrollViewerTo = useRef<(highlight: IHighlight) => void>(() => {});
 
@@ -107,8 +110,24 @@ export function App() {
     };
   }, [scrollToHighlightFromHash]);
 
-  if (!pdfUrl) {
+  if (!user) {
     return <LandingPage />;
+  }
+
+  // If no PDF is selected, show the dashboard.
+  if (!selectedPdfId) {
+    return <Home />;
+  }
+
+  // If a PDF is selected but the blob URL isn't ready yet, show a spinner.
+  if (pdfLoading) {
+    return <Spinner />;
+  }
+
+  // If a PDF was selected but the URL failed to load, direct back to the Dashboard.
+  if (!pdfUrl) {
+    // Optionally, you could show an error message here before redirecting.
+    return <Home />;
   }
 
   return (

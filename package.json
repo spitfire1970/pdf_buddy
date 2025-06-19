@@ -20,6 +20,7 @@
   "main": "./dist/src/index.js",
   "style": "./dist/style.css",
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "watch": "tsc --noEmit --watch --project tsconfig.json",
