@@ -39,9 +39,71 @@ const HighlightPopup = ({
     </div>
   ) : null;
 
+const AskInChatPopup = ({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) => {
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  const onConfirmRef = useRef(onConfirm);
+  const onCancelRef = useRef(onCancel);
+
+  useEffect(() => {
+    onConfirmRef.current = onConfirm;
+    onCancelRef.current = onCancel;
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        onConfirmRef.current();
+      }
+    };
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        popupRef.current &&
+        !popupRef.current.contains(event.target as Node)
+      ) {
+        onCancelRef.current();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={popupRef}
+      className="bg-main p-2 rounded-md shadow-lg border border-black-300"
+    >
+      <button
+        onClick={onConfirm}
+        className="px-3 py-1 bg-accent text-black text-sm font-semibold rounded-md hover:bg-accent/90 transition"
+      >
+        ask in chat
+      </button>
+    </div>
+  );
+};
+
 export function App() {
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(
+    null,
+  );
   const [highlights, setHighlights] = useState<Array<IHighlight>>([]);
+  const [sidebarWidth, setSidebarWidth] = useState(400); // Initial width in pixels
+  const isResizingRef = useRef(false);
 
   const handleFileUpload = (file: File) => {
     const fileUrl = URL.createObjectURL(file);
@@ -54,12 +116,16 @@ export function App() {
 
   const scrollViewerTo = useRef((highlight: IHighlight) => {});
 
+  const getHighlightById = (id: string) => {
+    return highlights.find((highlight) => highlight.id === id);
+  };
+
   const scrollToHighlightFromHash = useCallback(() => {
     const highlight = getHighlightById(parseIdFromHash());
     if (highlight) {
       scrollViewerTo.current(highlight);
     }
-  }, []);
+  }, [highlights]);
 
   useEffect(() => {
     window.addEventListener("hashchange", scrollToHighlightFromHash, false);
@@ -72,10 +138,6 @@ export function App() {
     };
   }, [scrollToHighlightFromHash]);
 
-  const getHighlightById = (id: string) => {
-    return highlights.find((highlight) => highlight.id === id);
-  };
-
   const addHighlight = (highlight: NewHighlight) => {
     setHighlights((prevHighlights) => [
       { ...highlight, id: getNextId() },
@@ -83,29 +145,28 @@ export function App() {
     ]);
   };
 
-  const updateHighlight = (
-    highlightId: string,
-    position: Partial<ScaledPosition>,
-    content: Partial<Content>,
-  ) => {
-    setHighlights((prevHighlights) =>
-      prevHighlights.map((h) => {
-        const {
-          id,
-          position: originalPosition,
-          content: originalContent,
-          ...rest
-        } = h;
-        return id === highlightId
-          ? {
-              id,
-              position: { ...originalPosition, ...position },
-              content: { ...originalContent, ...content },
-              ...rest,
-            }
-          : h;
-      }),
-    );
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isResizingRef.current) {
+      return;
+    }
+    const newWidth = window.innerWidth - e.clientX;
+    // Set constraints for min and max width
+    if (newWidth > 300 && newWidth < window.innerWidth * 0.7) {
+      setSidebarWidth(newWidth);
+    }
+  }, []);
+
+  const handleMouseUp = () => {
+    isResizingRef.current = false;
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("mouseup", handleMouseUp);
   };
 
   if (!pdfUrl) {
@@ -114,7 +175,7 @@ export function App() {
 
   return (
     <div className="App flex h-screen">
-      <div className="relative h-screen w-3/4">
+      <div className="flex-1 relative h-screen">
         <PdfLoader url={pdfUrl} beforeLoad={<Spinner />}>
           {(pdfDocument) => (
             <PdfHighlighter
@@ -129,14 +190,17 @@ export function App() {
                 position,
                 content,
                 hideTipAndSelection,
-                transformSelection,
               ) => (
-                <Tip
-                  onOpen={transformSelection}
-                  onConfirm={(comment) => {
-                    addHighlight({ content, position, comment });
+                <AskInChatPopup
+                  onConfirm={() => {
+                    addHighlight({
+                      content,
+                      position,
+                      comment: { emoji: "🔥", text: "fire" },
+                    });
                     hideTipAndSelection();
                   }}
+                  onCancel={hideTipAndSelection}
                 />
               )}
               highlightTransform={(
@@ -160,13 +224,7 @@ export function App() {
                   <AreaHighlight
                     isScrolledTo={isScrolledTo}
                     highlight={highlight}
-                    onChange={(boundingRect) => {
-                      updateHighlight(
-                        highlight.id,
-                        { boundingRect: viewportToScaled(boundingRect) },
-                        { image: screenshot(boundingRect) },
-                      );
-                    }}
+                    onChange={() => {}}
                   />
                 );
 
@@ -174,7 +232,7 @@ export function App() {
                   <Popup
                     popupContent={<HighlightPopup {...highlight} />}
                     onMouseOver={(popupContent) =>
-                      setTip(highlight, (highlight) => popupContent)
+                      setTip(highlight, () => popupContent)
                     }
                     onMouseOut={hideTip}
                     key={index}
@@ -188,7 +246,17 @@ export function App() {
           )}
         </PdfLoader>
       </div>
-      <Sidebar highlights={highlights} resetHighlights={resetHighlights} />
+
+      {/* Resizer Handle */}
+      <div
+        className="w-2 cursor-col-resize bg-gray-300 hover:bg-gray-400 transition-colors"
+        onMouseDown={handleMouseDown}
+      />
+
+      {/* Sidebar Wrapper */}
+      <div style={{ width: `${sidebarWidth}px` }}>
+        <Sidebar highlights={highlights} resetHighlights={resetHighlights} />
+      </div>
     </div>
   );
 }

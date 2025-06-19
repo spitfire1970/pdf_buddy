@@ -51,10 +51,12 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
 
   useEffect(() => {
     if (highlights.length > 0) {
-      const { id, type, context } = filtered_highlights[0];
+      const { id } = filtered_highlights[0];
       setActiveChatId(id);
       setView("chat");
-      setChats((prev) => ({ ...prev, [id]: [] }));
+      if (!chats[id]) {
+        setChats((prev) => ({ ...prev, [id]: [] }));
+      }
     }
   }, [highlights]);
 
@@ -67,6 +69,9 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
   const handleSend = async () => {
     if (!activeChatId || !prompt.trim()) return;
 
+    const currentPrompt = prompt;
+    setPrompt("");
+
     const highlight = filtered_highlights.find((h) => h.id === activeChatId);
     if (!highlight) return;
 
@@ -74,12 +79,13 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
       ...prev,
       [activeChatId]: [
         ...(prev[activeChatId] || []),
-        { role: "user", parts: [prompt] },
+        { role: "user", parts: [currentPrompt] },
+        { role: "model", parts: [""] }, // Start with an empty model message
       ],
     }));
 
     const endpoint =
-      chats[activeChatId]?.length > 0 ? "/continue-chat/" : "/branch-chat/";
+      chats[activeChatId]?.length > 1 ? "/continue-chat/" : "/branch-chat/";
 
     try {
       const res = await fetch("http://localhost:8000" + endpoint, {
@@ -87,27 +93,46 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: activeChatId,
-          prompt,
+          prompt: currentPrompt,
           type: highlight.type,
           content: highlight.context,
         }),
       });
-      const data = await res.json();
-      if (data.history) {
-        setChats((prev) => ({
-          ...prev,
-          [activeChatId]: data.history.slice(1),
-        }));
+
+      if (!res.body) return;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        const chunk = decoder.decode(value, { stream: true });
+        if (chunk) {
+          setChats((prev) => {
+            const newChats = { ...prev };
+            const currentChat = newChats[activeChatId];
+            const lastMessage = currentChat[currentChat.length - 1];
+            lastMessage.parts[0] += chunk;
+            return newChats;
+          });
+        }
       }
     } catch (e) {
       console.error(e);
-    } finally {
-      setPrompt("");
+       setChats((prev) => ({
+        ...prev,
+        [activeChatId]: [
+          ...(prev[activeChatId] || []).slice(0, -1),
+          { role: "model", parts: ["Sorry, something went wrong."] },
+        ],
+      }));
     }
   };
 
   return (
-    <div className="w-[25vw] flex flex-col overflow-auto text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
+    <div className="w-full h-full flex flex-col overflow-auto text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
       {view === "list" && (
         <div className="p-4">
           <h2 className="mb-4 text-xl font-semibold">Chats</h2>
@@ -139,7 +164,7 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
             {(chats[activeChatId] || []).map((msg, idx) => (
               <div
                 key={idx}
-                className={`p-3 rounded-md max-w-[80%] whitespace-pre-wrap prose prose-sm break-words ${
+                className={`p-3 rounded-md max-w-[80%] whitespace-pre-wrap prose prose-sm break-words overflow-x-auto ${
                   msg.role === "user" ? "bg-blue-100 ml-auto" : "bg-gray-200"
                 }`}
               >

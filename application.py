@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL_NAME = "models/gemini-2.5-flash-preview-05-20"
+MODEL_NAME = "gemini-1.5-flash"  # Updated to a recommended model
 
 app = FastAPI()
 
@@ -24,7 +24,6 @@ app.add_middleware(
 )
 
 pdf_chat = None
-
 branched_chats = {}
 
 class BranchInput(BaseModel):
@@ -37,9 +36,14 @@ class ContinueInput(BaseModel):
     id: str
     prompt: str
 
-async def stream_chat_response(chat_obj, messages):
-    for chunk in chat_obj.stream_send(messages):
-        yield chunk.text
+async def stream_chat_response(chat_obj, prompt):
+    """
+    Asynchronous generator to stream responses from the generative AI model.
+    """
+    response_stream = chat_obj.send_message(prompt, stream=True)
+    for chunk in response_stream:
+        if chunk.text:
+            yield chunk.text
 
 def decode_base64_image(data_url: str) -> bytes:
     if not data_url.startswith("data:image"):
@@ -89,7 +93,6 @@ async def upload_pdf(file: UploadFile = File(...)):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-
 @app.post("/branch-chat/")
 async def branch_chat(data: BranchInput):
     global pdf_chat
@@ -98,8 +101,8 @@ async def branch_chat(data: BranchInput):
         raise HTTPException(status_code=400, detail="No PDF has been uploaded yet.")
 
     model = genai.GenerativeModel(MODEL_NAME)
-
     branched = model.start_chat(history=pdf_chat.history)
+    branched_chats[data.id] = branched
 
     if data.type == "text":
         message = f"{data.prompt}\n\nText:\n{data.content}"
@@ -109,17 +112,7 @@ async def branch_chat(data: BranchInput):
     else:
         raise HTTPException(status_code=400, detail="Invalid type. Use 'text' or 'image'.")
 
-    response = branched.send_message(message)
-    chat_id = data.id  # from frontend
-
-    branched_chats[chat_id] = branched
-
-    return {
-        "success": True,
-        "chat_id": chat_id,
-        "history": chat_to_serializable(branched)
-    }
-
+    return StreamingResponse(stream_chat_response(branched, message))
 
 @app.post("/continue-chat/")
 async def continue_chat(data: ContinueInput):
@@ -127,10 +120,4 @@ async def continue_chat(data: ContinueInput):
         raise HTTPException(status_code=404, detail="Chat ID not found.")
 
     chat = branched_chats[data.id]
-    response = chat.send_message(data.prompt)
-
-    return {
-        "success": True,
-        "chat_id": data.id,
-        "history": chat_to_serializable(chat)
-    }
+    return StreamingResponse(stream_chat_response(chat, data.prompt))
