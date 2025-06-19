@@ -1,73 +1,20 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import axios from "axios";
-import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
+import { GoogleLogin } from "@react-oauth/google";
+import { useAuth } from "../contexts/AuthContext";
+import { usePdf } from "../contexts/PdfContext";
 
-interface User {
-  email: string;
-  name: string;
-  picture: string;
-}
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-interface LandingPageProps {
-  onFileUpload: (file: File) => void;
-}
-
-const API_URL = "http://localhost:8000";
-
-export function LandingPage({ onFileUpload }: LandingPageProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+export function LandingPage() {
+  const { user, login, logout, token } = useAuth();
+  const { uploadPdf } = usePdf();
   const [isDragging, setIsDragging] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    const userData = localStorage.getItem("user");
-    if (token && userData) {
-      const parsedUser = JSON.parse(userData);
-
-      // --- FOR DEBUGGING: Log the user object when the component loads ---
-      console.log("User loaded from localStorage:", parsedUser);
-
-      setUser(parsedUser);
-      setAuthToken(token);
-    }
-  }, []);
-
-  const handleLoginSuccess = async (credentialResponse: CredentialResponse) => {
-    if (credentialResponse.credential) {
-      try {
-        const res = await axios.post(`${API_URL}/auth/google`, {
-          token: credentialResponse.credential,
-        });
-
-        const { access_token, user_info } = res.data;
-
-        // --- FOR DEBUGGING: Log the user object on new login ---
-        console.log("User logged in successfully:", user_info);
-
-        setAuthToken(access_token);
-        setUser(user_info);
-
-        localStorage.setItem("authToken", access_token);
-        localStorage.setItem("user", JSON.stringify(user_info));
-      } catch (error) {
-        console.error("Authentication failed:", error);
-      }
-    }
-  };
-
-  // ... (the rest of your handler functions like handleLogout, uploadPDF, etc. remain the same) ...
-  const handleLogout = () => {
-    setUser(null);
-    setAuthToken(null);
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
-  };
-
-  const uploadPDF = async (pdfFile: File) => {
-    if (!authToken) {
+  const handlePdfUploadToServer = async (pdfFile: File) => {
+    if (!token) {
       console.error("No auth token found.");
       return;
     }
@@ -78,10 +25,10 @@ export function LandingPage({ onFileUpload }: LandingPageProps) {
       await axios.post(`${API_URL}/upload-pdf/`, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
-          Authorization: `Bearer ${authToken}`,
+          Authorization: `Bearer ${token}`,
         },
       });
-      onFileUpload(pdfFile);
+      uploadPdf(pdfFile);
     } catch (err) {
       console.error("Upload failed:", err);
     }
@@ -90,7 +37,7 @@ export function LandingPage({ onFileUpload }: LandingPageProps) {
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type === "application/pdf") {
-      uploadPDF(file);
+      handlePdfUploadToServer(file);
     }
   };
 
@@ -99,7 +46,7 @@ export function LandingPage({ onFileUpload }: LandingPageProps) {
     setIsDragging(false);
     const file = event.dataTransfer.files?.[0];
     if (file && file.type === "application/pdf") {
-      uploadPDF(file);
+      handlePdfUploadToServer(file);
     }
   };
 
@@ -107,20 +54,17 @@ export function LandingPage({ onFileUpload }: LandingPageProps) {
     <div className="min-h-screen w-full bg-black text-white flex items-center justify-center px-4 py-12 relative">
       {user && (
         <div className="absolute top-4 right-4 flex items-center bg-black/50 p-2 rounded-full z-10">
-          {/* --- FIXES APPLIED HERE --- */}
           <img
             src={user.picture}
             alt={user.name}
-            // Fix #1: Add referrerPolicy to solve potential blocking by Google's servers.
             referrerPolicy="no-referrer"
-            // Fix #2: Add flex-shrink-0 to ensure the image is not squashed by the flex container.
             className="w-8 h-8 rounded-full mr-3 flex-shrink-0"
           />
           <span className="text-white text-sm font-medium mr-4">
             {user.name}
           </span>
           <button
-            onClick={handleLogout}
+            onClick={logout}
             className="text-sm text-gray-400 hover:text-white pr-2"
           >
             Logout
@@ -128,7 +72,6 @@ export function LandingPage({ onFileUpload }: LandingPageProps) {
         </div>
       )}
 
-      {/* ... The rest of your JSX remains exactly the same ... */}
       <div className="max-w-7xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
         <div className="p-8 bg-black/60 border border-gray-700 rounded-3xl backdrop-blur-xl shadow-2xl">
           <h1 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-tight">
@@ -149,7 +92,11 @@ export function LandingPage({ onFileUpload }: LandingPageProps) {
                 setIsDragging(true);
               }}
               onDragLeave={() => setIsDragging(false)}
-              className={`group transition-all duration-300 flex flex-col items-center justify-center px-8 py-14 border-2 border-dashed rounded-2xl cursor-pointer ${isDragging ? "border-main bg-main/10" : "border-gray-600 hover:border-main hover:bg-main/5"}`}
+              className={`group transition-all duration-300 flex flex-col items-center justify-center px-8 py-14 border-2 border-dashed rounded-2xl cursor-pointer ${
+                isDragging
+                  ? "border-main bg-main/10"
+                  : "border-gray-600 hover:border-main hover:bg-main/5"
+              }`}
             >
               <svg
                 className="w-12 h-12 text-main mb-3 animate-pulse"
@@ -188,7 +135,7 @@ export function LandingPage({ onFileUpload }: LandingPageProps) {
                 documents.
               </p>
               <GoogleLogin
-                onSuccess={handleLoginSuccess}
+                onSuccess={login}
                 onError={() => console.log("Login Failed")}
               />
             </div>

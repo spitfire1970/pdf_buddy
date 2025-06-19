@@ -1,53 +1,40 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-
+import { useEffect, useCallback, useRef } from "react";
 import {
   AreaHighlight,
   Highlight,
   PdfHighlighter,
   PdfLoader,
   Popup,
-  Tip,
 } from "react-pdf-highlighter";
-import type {
-  Content,
-  IHighlight,
-  NewHighlight,
-  ScaledPosition,
-} from "react-pdf-highlighter";
-
+import type { IHighlight } from "react-pdf-highlighter";
 import { Sidebar } from "../components/Sidebar";
 import { Spinner } from "../components/Spinner";
 import { LandingPage } from "./LandingPage";
-
-const getNextId = () => String(Math.random()).slice(2);
+import { usePdf } from "../contexts/PdfContext";
+import { useSidebarResizing } from "../hooks/useSidebarResizing";
 
 const parseIdFromHash = () =>
   document.location.hash.slice("#highlight-".length);
-
 const resetHash = () => {
   document.location.hash = "";
 };
 
 const HighlightPopup = ({
   comment,
-}: {
-  comment: { text: string; emoji: string };
-}) =>
+}: { comment: { text: string; emoji: string } }) =>
   comment.text ? (
     <div className="Highlight__popup">
       {comment.emoji} {comment.text}
     </div>
   ) : null;
 
+// FIX: Restored the original AskInChatPopup with its keydown and click-outside logic.
+// This is the correct way to handle this kind of temporary, event-driven UI.
 const AskInChatPopup = ({
   onConfirm,
   onCancel,
-}: {
-  onConfirm: () => void;
-  onCancel: () => void;
-}) => {
+}: { onConfirm: () => void; onCancel: () => void }) => {
   const popupRef = useRef<HTMLDivElement>(null);
-
   const onConfirmRef = useRef(onConfirm);
   const onCancelRef = useRef(onCancel);
 
@@ -98,28 +85,12 @@ const AskInChatPopup = ({
 };
 
 export function App() {
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [highlights, setHighlights] = useState<Array<IHighlight>>([]);
-  const [sidebarWidth, setSidebarWidth] = useState(400); // Initial width in pixels
-  const isResizingRef = useRef(false);
-
-  const handleFileUpload = (file: File) => {
-    const fileUrl = URL.createObjectURL(file);
-    setPdfUrl(fileUrl);
-  };
-
-  const resetHighlights = () => {
-    setHighlights([]);
-  };
-
-  const scrollViewerTo = useRef((highlight: IHighlight) => {});
-
-  const getHighlightById = (id: string) => {
-    return highlights.find((highlight) => highlight.id === id);
-  };
+  const { pdfUrl, highlights, addHighlight } = usePdf();
+  const { sidebarWidth, handleMouseDown } = useSidebarResizing(400);
+  const scrollViewerTo = useRef<(highlight: IHighlight) => void>(() => {});
 
   const scrollToHighlightFromHash = useCallback(() => {
-    const highlight = getHighlightById(parseIdFromHash());
+    const highlight = highlights.find((h) => h.id === parseIdFromHash());
     if (highlight) {
       scrollViewerTo.current(highlight);
     }
@@ -136,44 +107,13 @@ export function App() {
     };
   }, [scrollToHighlightFromHash]);
 
-  const addHighlight = (highlight: NewHighlight) => {
-    setHighlights((prevHighlights) => [
-      { ...highlight, id: getNextId() },
-      ...prevHighlights,
-    ]);
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizingRef.current = true;
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  };
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isResizingRef.current) {
-      return;
-    }
-    const newWidth = window.innerWidth - e.clientX;
-    // Set constraints for min and max width
-    if (newWidth > 300 && newWidth < window.innerWidth * 0.7) {
-      setSidebarWidth(newWidth);
-    }
-  }, []);
-
-  const handleMouseUp = () => {
-    isResizingRef.current = false;
-    document.removeEventListener("mousemove", handleMouseMove);
-    document.removeEventListener("mouseup", handleMouseUp);
-  };
-
   if (!pdfUrl) {
-    return <LandingPage onFileUpload={handleFileUpload} />;
+    return <LandingPage />;
   }
 
   return (
-    <div className="App flex h-screen">
-      <div className="flex-1 relative h-screen">
+    <div className="App flex h-screen bg-gray-200">
+      <div className="flex-1 relative h-screen overflow-y-auto">
         <PdfLoader url={pdfUrl} beforeLoad={<Spinner />}>
           {(pdfDocument) => (
             <PdfHighlighter
@@ -197,31 +137,21 @@ export function App() {
                   onCancel={hideTipAndSelection}
                 />
               )}
-              highlightTransform={(
-                highlight,
-                index,
-                setTip,
-                hideTip,
-                viewportToScaled,
-                screenshot,
-                isScrolledTo,
-              ) => {
+              highlightTransform={(highlight, index, setTip, hideTip) => {
                 const isTextHighlight = !highlight.content?.image;
-
                 const component = isTextHighlight ? (
                   <Highlight
-                    isScrolledTo={isScrolledTo}
+                    isScrolledTo={false}
                     position={highlight.position}
                     comment={highlight.comment}
                   />
                 ) : (
                   <AreaHighlight
-                    isScrolledTo={isScrolledTo}
+                    isScrolledTo={false}
                     highlight={highlight}
                     onChange={() => {}}
                   />
                 );
-
                 return (
                   <Popup
                     popupContent={<HighlightPopup {...highlight} />}
@@ -241,15 +171,14 @@ export function App() {
         </PdfLoader>
       </div>
 
-      {/* Resizer Handle */}
       <div
-        className="w-2 cursor-col-resize bg-gray-300 hover:bg-gray-400 transition-colors"
+        className="w-2 cursor-col-resize bg-gray-400 hover:bg-gray-500 transition-colors"
         onMouseDown={handleMouseDown}
+        aria-label="Resize sidebar"
       />
 
-      {/* Sidebar Wrapper */}
-      <div style={{ width: `${sidebarWidth}px` }}>
-        <Sidebar highlights={highlights} resetHighlights={resetHighlights} />
+      <div style={{ width: `${sidebarWidth}px` }} className="flex-shrink-0">
+        <Sidebar />
       </div>
     </div>
   );

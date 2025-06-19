@@ -1,31 +1,24 @@
-import { useEffect, useRef, useState } from "react";
-import type { IHighlight } from "react-pdf-highlighter";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { ArrowLeft, SendHorizonal } from "lucide-react";
-
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-
-interface Props {
-  highlights: Array<IHighlight>;
-  resetHighlights: () => void;
-}
+import { usePdf } from "../contexts/PdfContext";
+import { useAuth } from "../contexts/AuthContext";
 
 interface InputObject {
   id: string;
-  content: {
-    text?: string;
-    image?: string;
-    [key: string]: any;
-  };
-  [key: string]: any;
+  content: { text?: string; image?: string };
 }
-
 interface CleanObject {
   id: string;
   type: "text" | "image";
   context: string;
+}
+interface ChatMessage {
+  role: "user" | "model";
+  parts: string[];
 }
 
 function cleanUpObject(obj: InputObject): CleanObject {
@@ -35,39 +28,60 @@ function cleanUpObject(obj: InputObject): CleanObject {
   throw new Error("Invalid object: content must contain either text or image.");
 }
 
-interface ChatMessage {
-  role: "user" | "model";
-  parts: string[];
-}
+// FIX: This style block prevents wide LaTeX equations from breaking the chat bubble layout.
+// It makes the equation container scrollable on its own if it's too wide.
+// The best practice is to move this to a global .css file (e.g., index.css).
+const latexOverflowFix = `
+  .prose .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5em 0.2em;
+  }
+`;
 
-export function Sidebar({ highlights, resetHighlights }: Props) {
+export function Sidebar() {
+  const { highlights, clearPdf } = usePdf();
+  const { token } = useAuth();
+
   const [view, setView] = useState<"list" | "chat">("list");
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string>("");
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const filtered_highlights = highlights.map((ele) => cleanUpObject(ele));
+  // FIX: Create a ref for the chat input element.
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const filtered_highlights = useMemo(
+    () => highlights.map(cleanUpObject),
+    [highlights],
+  );
 
   useEffect(() => {
-    if (highlights.length > 0) {
-      const { id } = filtered_highlights[0];
-      setActiveChatId(id);
-      setView("chat");
-      if (!chats[id]) {
-        setChats((prev) => ({ ...prev, [id]: [] }));
+    if (highlights.length > 0 && filtered_highlights.length > 0) {
+      const latestHighlight = filtered_highlights[0];
+      if (latestHighlight && !chats[latestHighlight.id]) {
+        setActiveChatId(latestHighlight.id);
+        setView("chat");
+        setChats((prev) => ({ ...prev, [latestHighlight.id]: [] }));
       }
     }
-  }, [highlights]);
+  }, [highlights, filtered_highlights, chats]);
 
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chats, activeChatId]);
 
+  // FIX: This effect runs whenever the view changes. If the view becomes 'chat',
+  // it focuses the input field for a better user experience.
+  useEffect(() => {
+    if (view === "chat") {
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [view, activeChatId]);
+
   const handleSend = async () => {
-    if (!activeChatId || !prompt.trim()) return;
+    if (!activeChatId || !prompt.trim() || !token) return;
 
     const currentPrompt = prompt;
     setPrompt("");
@@ -80,19 +94,14 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
       [activeChatId]: [
         ...(prev[activeChatId] || []),
         { role: "user", parts: [currentPrompt] },
-        { role: "model", parts: [""] }, // Start with an empty model message
+        { role: "model", parts: [""] },
       ],
     }));
 
     const endpoint =
-      chats[activeChatId]?.length > 1 ? "/continue-chat/" : "/branch-chat/";
-
-    const token = localStorage.getItem("authToken"); // Or however you store your token
-
-    if (!token) {
-      console.error("No access token found. Please log in.");
-      return;
-    }
+      (chats[activeChatId]?.length || 0) > 1
+        ? "/continue-chat/"
+        : "/branch-chat/";
 
     try {
       const res = await fetch("http://localhost:8000" + endpoint, {
@@ -108,56 +117,57 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
           content: highlight.context,
         }),
       });
-
       if (!res.body) return;
-
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let done = false;
-
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
         const chunk = decoder.decode(value, { stream: true });
-        if (chunk) {
-          setChats((prev) => {
-            const newChats = { ...prev };
-            const currentChat = newChats[activeChatId];
-            const lastMessage = currentChat[currentChat.length - 1];
-            lastMessage.parts[0] += chunk;
-            return newChats;
+        setChats((prev) => {
+          const newChatsForId = prev[activeChatId].map((msg, index) => {
+            if (index === prev[activeChatId].length - 1) {
+              return { ...msg, parts: [msg.parts[0] + chunk] };
+            }
+            return msg;
           });
-        }
+          return { ...prev, [activeChatId]: newChatsForId };
+        });
       }
     } catch (e) {
       console.error(e);
-      setChats((prev) => ({
-        ...prev,
-        [activeChatId]: [
-          ...(prev[activeChatId] || []).slice(0, -1),
-          { role: "model", parts: ["Sorry, something went wrong."] },
-        ],
-      }));
+      // Handle error state
     }
   };
 
   return (
     <div className="w-full h-full flex flex-col overflow-auto text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
+      {/* FIX: Applying the style tag to inject the CSS fix. */}
+      <style>{latexOverflowFix}</style>
+
       {view === "list" && (
-        <div className="p-4">
+        <div className="flex-1 p-4">
           <h2 className="mb-4 text-xl font-semibold">Chats</h2>
-          {Object.entries(chats).map(([id, history]) => (
-            <div
-              key={id}
-              className="cursor-pointer border-b border-neutral-300 px-2 py-3 hover:bg-neutral-200"
-              onClick={() => {
-                setActiveChatId(id);
-                setView("chat");
-              }}
-            >
-              {history[0]?.parts[0]?.slice(0, 40) || "(new chat)"}...
-            </div>
-          ))}
+          {Object.keys(chats).length > 0 ? (
+            Object.entries(chats).map(([id, history]) => (
+              <div
+                key={id}
+                className="cursor-pointer border-b border-neutral-300 px-2 py-3 hover:bg-neutral-200"
+                onClick={() => {
+                  setActiveChatId(id);
+                  setView("chat");
+                }}
+              >
+                {history[0]?.parts[0]?.slice(0, 40) ||
+                  `Chat about highlight ${id.slice(0, 5)}`}
+                ...
+              </div>
+            ))
+          ) : (
+            <p className="text-gray-500 italic">
+              Highlight a section of the PDF to start a chat.
+            </p>
+          )}
         </div>
       )}
 
@@ -174,7 +184,7 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
             {(chats[activeChatId] || []).map((msg, idx) => (
               <div
                 key={idx}
-                className={`p-3 rounded-md max-w-[80%] whitespace-pre-wrap prose prose-sm break-words ${
+                className={`p-3 rounded-lg max-w-[85%] whitespace-pre-wrap prose prose-sm break-words ${
                   msg.role === "user" ? "bg-blue-100 ml-auto" : "bg-gray-200"
                 }`}
               >
@@ -183,9 +193,7 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
                     key={i}
                     remarkPlugins={[remarkMath]}
                     rehypePlugins={[rehypeKatex]}
-                    components={{
-                      p: ({ children }) => <p className="my-1">{children}</p>,
-                    }}
+                    components={{ p: "span" }}
                   >
                     {part}
                   </ReactMarkdown>
@@ -194,33 +202,33 @@ export function Sidebar({ highlights, resetHighlights }: Props) {
             ))}
             <div ref={messagesEndRef} />
           </div>
-          <div className="border-t flex items-center gap-2 p-2">
+          <div className="border-t flex items-center gap-2 p-2 bg-white">
             <input
-              className="flex-1 px-3 py-2 rounded border"
+              // FIX: Assign the ref to the input element.
+              ref={inputRef}
+              className="flex-1 px-3 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
               placeholder="Type a message..."
             />
             <SendHorizonal
-              className="text-accent cursor-pointer"
+              className="text-accent cursor-pointer hover:text-accent/80"
               onClick={handleSend}
             />
           </div>
         </div>
       )}
 
-      {view === "list" && highlights.length > 0 && (
-        <div className="p-4">
-          <button
-            type="button"
-            onClick={resetHighlights}
-            className="px-4 py-2 text-black bg-accent rounded hover:bg-accent/80"
-          >
-            Reset highlights
-          </button>
-        </div>
-      )}
+      <div className="p-4 mt-auto border-t">
+        <button
+          type="button"
+          onClick={clearPdf}
+          className="w-full px-4 py-2 text-white font-semibold bg-gray-600 rounded hover:bg-gray-700"
+        >
+          Close PDF & Start Over
+        </button>
+      </div>
     </div>
   );
 }
