@@ -76,9 +76,11 @@ const AskInChatPopup = ({
     >
       <button
         onClick={onConfirm}
-        className="px-3 py-1 bg-accent text-black text-sm font-semibold rounded-md hover:bg-accent/90 transition cursor-pointer"
+        className="px-2 py-1 bg-accent text-black text-sm font-semibold rounded-md hover:bg-accent/90 transition cursor-pointer"
       >
-        Ask in chat
+        Ask in chat  <kbd className="w-6 h-6 inline-flex items-center whitespace-nowrap rounded border border-gray-400 bg-gradient-to-b from-gray-200 to-gray-100 py-0.5 px-2 text-xs text-gray-800 shadow-sm">
+                      <a className="mw-selflink selflink">↵</a>
+                    </kbd>
       </button>
     </div>
   );

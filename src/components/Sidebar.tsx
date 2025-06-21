@@ -161,7 +161,9 @@ export function Sidebar() {
             ))
           ) : (
             <p className="text-gray-500 italic">
-              Highlight a section of the PDF to start a chat. Hold ⌥ and drag 
+              Highlight a section of the PDF to start a chat. Hold ⌥ and select area for <span className="font-serif">
+  L<span className="uppercase text-xs align-[0.25em] -ml-[0.36em] -mr-[0.15em] leading-[1ex]">a</span>T<span className="uppercase align-[-0.25em] -ml-[0.1667em] -mr-[0.125em] leading-[1ex]">e</span>X
+</span> or images.
             </p>
           )}
         </div>

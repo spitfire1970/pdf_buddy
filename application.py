@@ -20,7 +20,7 @@ load_dotenv()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MODEL_NAME = "gemini-1.5-flash"
-SECRET_KEY = os.getenv("GOOGLE_CLIENT_SECRET") or "a_very_secret_key_for_testing"
+SECRET_KEY = os.getenv("GOOGLE_CLIENT_SECRET") # just some random long value
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 1 day
 
