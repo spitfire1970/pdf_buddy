@@ -24,7 +24,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "watch": "tsc --noEmit --watch --project tsconfig.json",
-    "lint": "eslint .",
+    "lint": "npx @biomejs/biome format --write ./src",
     "preview": "vite preview"
   },
   "peerDependencies": {

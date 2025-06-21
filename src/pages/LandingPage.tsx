@@ -12,8 +12,9 @@ export function LandingPage() {
             <span className="text-accent">PDF</span> Buddy
           </h1>
           <p className="text-lg text-gray-300 mb-8">
-            No research paper is too complex with our <span className="text-accent">interactive
-             AI-powered </span> PDF viewer.
+            No research paper is too complex with our{" "}
+            <span className="text-accent">interactive AI-powered </span> PDF
+            viewer.
           </p>
 
           <div className="flex flex-col items-center justify-center px-8 py-14 border-2 border-dashed border-gray-600 rounded-2xl">

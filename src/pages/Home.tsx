@@ -133,9 +133,7 @@ export function Home() {
               />
             </svg>
             <span className="text-white text-lg font-semibold">
-              {isDragging
-                ? "Drop your PDF here"
-                : "Open a new PDF"}
+              {isDragging ? "Drop your PDF here" : "Open a new PDF"}
             </span>
             <span className="text-sm text-gray-400 mt-1">
               Click or drag a .pdf file
