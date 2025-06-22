@@ -1,39 +1,28 @@
-# application.py
-
 from contextlib import asynccontextmanager
 import base64
-import json
 import re
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, List
 
-# --- Core FastAPI and Pydantic ---
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel as PydanticBaseModel
 
-# --- Database: SQLModel, SQLAlchemy ---
 from sqlmodel import Field, Session, SQLModel, create_engine, Relationship, Column
 from sqlalchemy.dialects.postgresql import JSONB, BYTEA
 
-# --- Security & Auth ---
 from jose import JWTError, jwt
 from google.oauth2 import id_token
 from google.auth.transport import requests
 
-# --- AI ---
 import google.generativeai as genai
 
-# --- Environment Loading ---
 from dotenv import load_dotenv
 load_dotenv()
 
-# ==============================================================================
-# 1. CONFIGURATION
-# ==============================================================================
 DATABASE_URL = os.getenv("DATABASE_URL")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -48,10 +37,6 @@ if not DATABASE_URL:
 genai.configure(api_key=GEMINI_API_KEY)
 
 engine = create_engine(DATABASE_URL, echo=False)
-
-# ==============================================================================
-# 2. DATABASE MODELS (using SQLModel)
-# ==============================================================================
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -76,10 +61,6 @@ class Chat(SQLModel, table=True):
     pdf_id: uuid.UUID = Field(foreign_key="pdf.id")
     pdf: PDF = Relationship(back_populates="chats")
 
-# ==============================================================================
-# 3. DATABASE SETUP & SESSION MANAGEMENT
-# ==============================================================================
-
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
 
@@ -94,9 +75,6 @@ async def lifespan(app: FastAPI):
     yield
     print("Shutting down...")
 
-# ==============================================================================
-# 4. PYDANTIC MODELS FOR API (Request/Response)
-# ==============================================================================
 class BaseModel(PydanticBaseModel):
     class Config:
         from_attributes = True
@@ -126,10 +104,6 @@ class ContinueInput(BaseModel):
     id: str
     prompt: str
 
-# ==============================================================================
-# 5. FASTAPI APP & MIDDLEWARE
-# ==============================================================================
-
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
@@ -138,10 +112,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ==============================================================================
-# 6. AUTHENTICATION & USER HANDLING
-# ==============================================================================
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -170,11 +140,7 @@ async def get_current_user(db: Session = Depends(get_session), authorization: st
     except JWTError:
         raise credentials_exception
 
-# ==============================================================================
-# 7. API ENDPOINTS
-# ==============================================================================
-
-@app.post("/auth/google")
+app.post("/auth/google")
 async def auth_google(google_token: GoogleToken, db: Session = Depends(get_session)):
     try:
         idinfo = id_token.verify_oauth2_token(google_token.token, requests.Request(), GOOGLE_CLIENT_ID)
