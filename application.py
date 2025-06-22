@@ -20,7 +20,7 @@ load_dotenv()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MODEL_NAME = "gemini-1.5-flash"
-SECRET_KEY = os.getenv("GOOGLE_CLIENT_SECRET") # just some random long value
+SECRET_KEY = os.getenv("GOOGLE_CLIENT_SECRET") # In a real app, use a securely generated key
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 1 day
 
@@ -32,7 +32,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # In production, restrict this to your frontend's domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,7 +40,6 @@ app.add_middleware(
 
 # --- In-memory storage ---
 # In production, this should be a proper database (e.g., PostgreSQL, MongoDB).
-# This new structure supports multiple users, each with multiple PDFs.
 # user_data -> user_email -> pdfs -> pdf_id -> pdf_details
 user_data: Dict[str, Dict[str, Any]] = {}
 
@@ -54,7 +53,6 @@ class UserInfo(BaseModel):
     name: str
     picture: Optional[str] = None
 
-# This User model is derived from the JWT token
 class User(BaseModel):
     email: str
     name: str
@@ -65,11 +63,10 @@ class PdfDetails(BaseModel):
     filename: str
     upload_date: datetime
 
-# Updated chat inputs to include pdf_id
 class BranchInput(BaseModel):
     pdf_id: str
     id: str  # highlight id
-    type: str  # "text" or "image"
+    type: str
     content: str
     prompt: str
 
@@ -77,7 +74,6 @@ class ContinueInput(BaseModel):
     pdf_id: str
     id: str # highlight id
     prompt: str
-
 
 # --- Authentication ---
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -91,6 +87,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 async def get_current_user(authorization: str = Header(...)):
+    if "Bearer " not in authorization:
+        raise HTTPException(status_code=401, detail="Invalid authorization scheme")
     token = authorization.split("Bearer ")[1]
     credentials_exception = HTTPException(
         status_code=401,
@@ -130,24 +128,20 @@ async def auth_google(google_token: GoogleToken):
 @app.post("/upload-pdf/")
 async def upload_pdf(current_user: User = Depends(get_current_user), file: UploadFile = File(...)):
     user_id = current_user.email
-    # Initialize user's data if not present
     if user_id not in user_data:
         user_data[user_id] = {"pdfs": {}}
 
     pdf_bytes = await file.read()
     pdf_id = str(uuid.uuid4())
     
-    # Store PDF metadata and content
     user_data[user_id]["pdfs"][pdf_id] = {
         "id": pdf_id,
         "filename": file.filename,
         "upload_date": datetime.now(timezone.utc),
         "pdf_bytes": pdf_bytes,
-        "main_chat": None, # Will be created on first branch
+        "main_chat": None,
         "branched_chats": {}
     }
-
-    # Return the new PDF's ID so the frontend can select it
     return {"id": pdf_id, "filename": file.filename}
 
 @app.get("/get-pdfs/", response_model=List[PdfDetails])
@@ -156,7 +150,6 @@ async def get_pdfs(current_user: User = Depends(get_current_user)):
     if user_id not in user_data or not user_data[user_id].get("pdfs"):
         return []
     
-    # Return a list of PDF details, excluding the large byte content
     pdf_list = [
         PdfDetails(id=pdf["id"], filename=pdf["filename"], upload_date=pdf["upload_date"])
         for pdf in user_data[user_id]["pdfs"].values()
@@ -172,16 +165,20 @@ async def get_pdf_file(pdf_id: str, current_user: User = Depends(get_current_use
     pdf_bytes = user_data[user_id]["pdfs"][pdf_id]["pdf_bytes"]
     return Response(content=pdf_bytes, media_type="application/pdf")
 
-async def stream_chat_response(chat_obj, prompt):
+async def stream_chat_response(chat_obj, prompt, initial_content=None):
     try:
-        response_stream = chat_obj.send_message(prompt, stream=True)
+        # For branching, construct the first message with context
+        if initial_content:
+            response_stream = chat_obj.send_message(initial_content, stream=True)
+        else: # For continuing, just send the prompt
+            response_stream = chat_obj.send_message(prompt, stream=True)
+            
         for chunk in response_stream:
             if chunk.text:
                 yield chunk.text
     except Exception as e:
         print(f"Error during streaming: {e}")
         yield f"An error occurred: {e}"
-
 
 def decode_base64_image(data_url: str) -> bytes:
     match = re.match(r"^data:image/\w+;base64,(.+)", data_url)
@@ -190,17 +187,16 @@ def decode_base64_image(data_url: str) -> bytes:
     return base64.b64decode(match.group(1))
 
 def get_or_create_main_chat(user_id: str, pdf_id: str):
-    """Lazily initializes the main chat session for a PDF."""
     pdf_info = user_data[user_id]["pdfs"][pdf_id]
     if pdf_info["main_chat"] is None:
         model = genai.GenerativeModel(MODEL_NAME)
         pdf_chat = model.start_chat(history=[
             {"role": "user", "parts": [
                 {"mime_type": "application/pdf", "data": pdf_info["pdf_bytes"]},
-                "Process this PDF. I will ask follow-up questions about specific parts."
-            ]}
+                "This is the document. I will ask follow-up questions about specific parts I highlight."
+            ]},
+             {"role": "model", "parts": ["Understood. I have processed the document. I'm ready for your questions about specific sections."]}
         ])
-        pdf_chat.send_message("OK") # Send a short message to prime the chat
         pdf_info["main_chat"] = pdf_chat
     return pdf_info["main_chat"]
 
@@ -210,25 +206,26 @@ async def branch_chat(data: BranchInput, current_user: User = Depends(get_curren
     if user_id not in user_data or data.pdf_id not in user_data[user_id]["pdfs"]:
         raise HTTPException(status_code=404, detail="PDF not found for this user.")
 
-    # Get the main chat for the specific PDF, creating it if it doesn't exist
     main_chat = get_or_create_main_chat(user_id, data.pdf_id)
     
     model = genai.GenerativeModel(MODEL_NAME)
     branched = model.start_chat(history=main_chat.history)
     user_data[user_id]["pdfs"][data.pdf_id]["branched_chats"][data.id] = branched
 
+    initial_message_content = []
     if data.type == "text":
-        message = f"{data.prompt}\n\nHere is the relevant text from the document:\n{data.content}"
+        initial_message_content = [f"{data.prompt}\n\nHere is the relevant text from the document:\n{data.content}"]
     elif data.type == "image":
         try:
             image_bytes = decode_base64_image(data.content)
-            message = [{"mime_type": "image/png", "data": image_bytes}, data.prompt]
+            # The API expects prompt text and images to be separate parts
+            initial_message_content = [data.prompt, {"mime_type": "image/png", "data": image_bytes}]
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
     else:
         raise HTTPException(status_code=400, detail="Invalid type. Use 'text' or 'image'.")
 
-    return StreamingResponse(stream_chat_response(branched, message))
+    return StreamingResponse(stream_chat_response(branched, data.prompt, initial_content=initial_message_content))
 
 @app.post("/continue-chat/")
 async def continue_chat(data: ContinueInput, current_user: User = Depends(get_current_user)):
@@ -240,3 +237,29 @@ async def continue_chat(data: ContinueInput, current_user: User = Depends(get_cu
 
     chat = branched_chats[data.id]
     return StreamingResponse(stream_chat_response(chat, data.prompt))
+
+@app.get("/pdf-chats/{pdf_id}", response_model=Dict[str, List[Dict[str, Any]]])
+async def get_all_chats(pdf_id: str, current_user: User = Depends(get_current_user)):
+    user_id = current_user.email
+    if user_id not in user_data or pdf_id not in user_data[user_id]["pdfs"]:
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    branched_chats = user_data[user_id]["pdfs"][pdf_id].get("branched_chats", {})
+    
+    response_data: Dict[str, List[Dict[str, Any]]] = {}
+    
+    for chat_id, chat_session in branched_chats.items():
+        serializable_history = []
+        # Skip the first 2 turns (PDF upload and confirmation) from the main chat history
+        # and start with the actual user/model conversation.
+        for turn in chat_session.history[2:]:
+            text_parts = [part.text for part in turn.parts if hasattr(part, 'text')]
+            if text_parts:
+                # This structure now matches the frontend's ChatMessage interface
+                serializable_history.append({
+                    "role": turn.role,
+                    "parts": text_parts
+                })
+        response_data[chat_id] = serializable_history
+        
+    return response_data

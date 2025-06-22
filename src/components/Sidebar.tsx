@@ -6,6 +6,9 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { usePdf } from "../contexts/PdfContext";
 import { useAuth } from "../contexts/AuthContext";
+import axios from "axios";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 interface InputObject {
   id: string;
@@ -37,7 +40,6 @@ const latexOverflowFix = `
 `;
 
 export function Sidebar() {
-  // FIX: Destructure selectedPdfId from the usePdf hook
   const { highlights, selectPdf, selectedPdfId } = usePdf();
   const { token } = useAuth();
 
@@ -54,8 +56,32 @@ export function Sidebar() {
   );
 
   useEffect(() => {
+    const fetchChats = async () => {
+      // Don't fetch if pdf or token is missing
+      if (!token || !selectedPdfId) {
+        setChats({}); // Clear chats if no PDF is selected
+        return;
+      }
+      try {
+        const res = await axios.get(`${API_URL}/pdf-chats/${selectedPdfId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        // The backend now returns the exact object shape the state expects
+        setChats(res.data);
+      } catch (err) {
+        console.error("Failed to fetch chats:", err);
+        setChats({}); // Clear chats on error
+      }
+    };
+    fetchChats();
+    // FIX: Added token to dependency array for re-fetching on auth changes.
+  }, [selectedPdfId, token]);
+
+  useEffect(() => {
+    // This effect creates a new chat session in the UI when a new highlight is made
     if (highlights.length > 0 && filtered_highlights.length > 0) {
       const latestHighlight = filtered_highlights[0];
+      // If the latest highlight doesn't have a chat session yet, create one
       if (latestHighlight && !chats[latestHighlight.id]) {
         setActiveChatId(latestHighlight.id);
         setView("chat");
@@ -75,7 +101,6 @@ export function Sidebar() {
   }, [view, activeChatId]);
 
   const handleSend = async () => {
-    // FIX: Add a guard to ensure we have a selectedPdfId before sending
     if (!activeChatId || !prompt.trim() || !token || !selectedPdfId) return;
 
     const currentPrompt = prompt;
@@ -84,28 +109,29 @@ export function Sidebar() {
     const highlight = filtered_highlights.find((h) => h.id === activeChatId);
     if (!highlight) return;
 
+    // A chat is "new" if it has no messages from the model yet.
+    // We check for length > 0 because the user message is added first.
+    const isNewChat = (chats[activeChatId]?.length || 0) < 1;
+    const endpoint = isNewChat ? "/branch-chat/" : "/continue-chat/";
+
+    // Immediately add user message and an empty model placeholder for the streaming response
     setChats((prev) => ({
       ...prev,
       [activeChatId]: [
         ...(prev[activeChatId] || []),
         { role: "user", parts: [currentPrompt] },
-        { role: "model", parts: [""] },
+        { role: "model", parts: [""] }, // Placeholder for streaming
       ],
     }));
 
-    const endpoint =
-      (chats[activeChatId]?.length || 0) > 1
-        ? "/continue-chat/"
-        : "/branch-chat/";
-
     try {
-      const res = await fetch("http://localhost:8000" + endpoint, {
+      // FIX: Using the API_URL variable for consistency
+      const res = await fetch(API_URL + endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        // FIX: Add the required 'pdf_id' to the request body
         body: JSON.stringify({
           pdf_id: selectedPdfId,
           id: activeChatId,
@@ -114,7 +140,12 @@ export function Sidebar() {
           content: highlight.context,
         }),
       });
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
       if (!res.body) return;
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       while (true) {
@@ -122,18 +153,36 @@ export function Sidebar() {
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
         setChats((prev) => {
-          const newChatsForId = prev[activeChatId].map((msg, index) => {
-            if (index === prev[activeChatId].length - 1) {
-              return { ...msg, parts: [msg.parts[0] + chunk] };
-            }
-            return msg;
-          });
-          return { ...prev, [activeChatId]: newChatsForId };
+          const currentChat = prev[activeChatId] || [];
+          if (currentChat.length === 0) return prev; // Should not happen
+
+          // Update the last message (the model's response)
+          const updatedLastMessage = {
+            ...currentChat[currentChat.length - 1],
+            parts: [currentChat[currentChat.length - 1].parts[0] + chunk],
+          };
+
+          return {
+            ...prev,
+            [activeChatId]: [...currentChat.slice(0, -1), updatedLastMessage],
+          };
         });
       }
     } catch (e) {
       console.error(e);
-      // Handle error state
+      // Let user know something went wrong
+      setChats((prev) => {
+        const currentChat = prev[activeChatId] || [];
+        if (currentChat.length === 0) return prev;
+        const updatedLastMessage = {
+          ...currentChat[currentChat.length - 1],
+          parts: [`Sorry, an error occurred. Please try again.`],
+        };
+        return {
+          ...prev,
+          [activeChatId]: [...currentChat.slice(0, -1), updatedLastMessage],
+        };
+      });
     }
   };
 
@@ -145,36 +194,29 @@ export function Sidebar() {
         <div className="flex-1 p-4">
           <h2 className="mb-4 text-xl font-semibold">Chats</h2>
           {Object.keys(chats).length > 0 ? (
-            Object.entries(chats).map(([id, history]) => (
-              <div
-                key={id}
-                className="cursor-pointer border-b border-neutral-300 px-2 py-3 hover:bg-neutral-200"
-                onClick={() => {
-                  setActiveChatId(id);
-                  setView("chat");
-                }}
-              >
-                {history[0]?.parts[0]?.slice(0, 40) ||
-                  `Chat about highlight ${id.slice(0, 5)}`}
-                ...
-              </div>
-            ))
+            Object.entries(chats).map(([id, history]) => {
+              // Find the first user message for a better title
+              const firstUserMessage = history.find((m) => m.role === "user");
+              const title =
+                firstUserMessage?.parts[0] ||
+                `Chat about highlight ${id.slice(0, 5)}`;
+              return (
+                <div
+                  key={id}
+                  className="cursor-pointer border-b border-neutral-300 px-2 py-3 hover:bg-neutral-200"
+                  onClick={() => {
+                    setActiveChatId(id);
+                    setView("chat");
+                  }}
+                >
+                  {title.slice(0, 40)}...
+                </div>
+              );
+            })
           ) : (
             <p className="text-gray-500 italic">
               Highlight a section of the PDF to start a chat. Hold ⌥ and select
-              area for{" "}
-              <span className="font-serif">
-                L
-                <span className="uppercase text-xs align-[0.25em] -ml-[0.36em] -mr-[0.15em] leading-[1ex]">
-                  a
-                </span>
-                T
-                <span className="uppercase align-[-0.25em] -ml-[0.1667em] -mr-[0.125em] leading-[1ex]">
-                  e
-                </span>
-                X
-              </span>{" "}
-              or images.
+              area for images.
             </p>
           )}
         </div>

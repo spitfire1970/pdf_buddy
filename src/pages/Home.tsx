@@ -19,12 +19,9 @@ export function Home() {
         const res = await axios.get(`${API_URL}/get-pdfs/`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        // FIX: The backend returns a direct array, so we use res.data directly
-        // instead of res.data.pdfs.
         setPdfs(res.data);
       } catch (err) {
         console.error("Failed to fetch PDFs:", err);
-        // It's good practice to set it to an empty array on failure
         setPdfs([]);
       }
     };
@@ -46,7 +43,6 @@ export function Home() {
           Authorization: `Bearer ${token}`,
         },
       });
-      // The upload endpoint now returns the new PDF's ID, which we use to select it.
       selectPdf(res.data.id);
     } catch (err) {
       console.error("Upload failed:", err);
