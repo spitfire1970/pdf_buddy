@@ -1,15 +1,10 @@
 Creating database and tables...
-INFO:     127.0.0.1:57824 - "OPTIONS /auth/google HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57824 - "POST /auth/google HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57824 - "OPTIONS /get-pdfs/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57824 - "GET /get-pdfs/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57827 - "OPTIONS /upload-pdf/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57827 - "POST /upload-pdf/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57827 - "OPTIONS /pdfs/a9c9a2cd-cbf5-4dc9-86f6-521999d233a2 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57827 - "GET /pdfs/a9c9a2cd-cbf5-4dc9-86f6-521999d233a2 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57827 - "OPTIONS /pdf-chats/a9c9a2cd-cbf5-4dc9-86f6-521999d233a2 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57827 - "GET /pdf-chats/a9c9a2cd-cbf5-4dc9-86f6-521999d233a2 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57832 - "OPTIONS /branch-chat/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57832 - "POST /branch-chat/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57888 - "OPTIONS /get-pdfs/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57888 - "GET /get-pdfs/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58181 - "OPTIONS /auth/google HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58181 - "POST /auth/google HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58181 - "OPTIONS /get-pdfs/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58181 - "GET /get-pdfs/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58181 - "GET /pdfs/7c1e70ec-1619-4b2a-bd0e-418411a39c1c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58181 - "GET /pdf-chats/7c1e70ec-1619-4b2a-bd0e-418411a39c1c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58181 - "GET /get-pdfs/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58183 - "GET /pdfs/a9c9a2cd-cbf5-4dc9-86f6-521999d233a2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58183 - "GET /pdf-chats/a9c9a2cd-cbf5-4dc9-86f6-521999d233a2 HTTP/1.1" 200 OK

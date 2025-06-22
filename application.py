@@ -1,50 +1,106 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, Response
-from pydantic import BaseModel
+# application.py
+
+from contextlib import asynccontextmanager
 import base64
-import google.generativeai as genai
+import json
 import re
 import os
 import uuid
-from dotenv import load_dotenv
-from google.oauth2 import id_token
-from google.auth.transport import requests
-from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, List
 
+# --- Core FastAPI and Pydantic ---
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, Response
+from pydantic import BaseModel as PydanticBaseModel
+
+# --- Database: SQLModel, SQLAlchemy ---
+from sqlmodel import Field, Session, SQLModel, create_engine, Relationship, Column
+from sqlalchemy.dialects.postgresql import JSONB, BYTEA
+
+# --- Security & Auth ---
+from jose import JWTError, jwt
+from google.oauth2 import id_token
+from google.auth.transport import requests
+
+# --- AI ---
+import google.generativeai as genai
+
+# --- Environment Loading ---
+from dotenv import load_dotenv
 load_dotenv()
 
-# --- Configuration ---
+# ==============================================================================
+# 1. CONFIGURATION
+# ==============================================================================
+DATABASE_URL = os.getenv("DATABASE_URL")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL_NAME = "gemini-1.5-flash"
-SECRET_KEY = os.getenv("GOOGLE_CLIENT_SECRET") # In a real app, use a securely generated key
+SECRET_KEY = os.getenv("GOOGLE_CLIENT_SECRET", "a_secure_default_secret_key_for_development")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 1 day
+MODEL_NAME = "gemini-1.5-flash"
 
-# --- Generative AI Setup ---
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set.")
+
 genai.configure(api_key=GEMINI_API_KEY)
 
-# --- FastAPI App Initialization ---
-app = FastAPI()
+engine = create_engine(DATABASE_URL, echo=False)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this to your frontend's domain
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ==============================================================================
+# 2. DATABASE MODELS (using SQLModel)
+# ==============================================================================
 
-# --- In-memory storage ---
-# In production, this should be a proper database (e.g., PostgreSQL, MongoDB).
-# user_data -> user_email -> pdfs -> pdf_id -> pdf_details
-user_data: Dict[str, Dict[str, Any]] = {}
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(unique=True, index=True)
+    name: Optional[str] = None
+    picture: Optional[str] = None
+    pdfs: List["PDF"] = Relationship(back_populates="user")
 
+class PDF(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    filename: str
+    upload_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    pdf_bytes: bytes = Field(sa_column=Column(BYTEA))
+    user_id: int = Field(foreign_key="user.id")
+    user: User = Relationship(back_populates="pdfs")
+    chats: List["Chat"] = Relationship(back_populates="pdf")
 
-# --- Pydantic Models ---
+class Chat(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    chat_id_str: str = Field(index=True) 
+    history: List[Dict[str, Any]] = Field(default=[], sa_column=Column(JSONB))
+    pdf_id: uuid.UUID = Field(foreign_key="pdf.id")
+    pdf: PDF = Relationship(back_populates="chats")
+
+# ==============================================================================
+# 3. DATABASE SETUP & SESSION MANAGEMENT
+# ==============================================================================
+
+def create_db_and_tables():
+    SQLModel.metadata.create_all(engine)
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Creating database and tables...")
+    create_db_and_tables()
+    yield
+    print("Shutting down...")
+
+# ==============================================================================
+# 4. PYDANTIC MODELS FOR API (Request/Response)
+# ==============================================================================
+class BaseModel(PydanticBaseModel):
+    class Config:
+        from_attributes = True
+
 class GoogleToken(BaseModel):
     token: str
 
@@ -53,213 +109,224 @@ class UserInfo(BaseModel):
     name: str
     picture: Optional[str] = None
 
-class User(BaseModel):
-    email: str
-    name: str
-    picture: Optional[str] = None
-
 class PdfDetails(BaseModel):
-    id: str
+    id: uuid.UUID
     filename: str
     upload_date: datetime
 
 class BranchInput(BaseModel):
     pdf_id: str
-    id: str  # highlight id
+    id: str
     type: str
     content: str
     prompt: str
 
 class ContinueInput(BaseModel):
     pdf_id: str
-    id: str # highlight id
+    id: str
     prompt: str
 
-# --- Authentication ---
+# ==============================================================================
+# 5. FASTAPI APP & MIDDLEWARE
+# ==============================================================================
+
+app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ==============================================================================
+# 6. AUTHENTICATION & USER HANDLING
+# ==============================================================================
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-async def get_current_user(authorization: str = Header(...)):
+async def get_current_user(db: Session = Depends(get_session), authorization: str = Header(...)) -> User:
     if "Bearer " not in authorization:
         raise HTTPException(status_code=401, detail="Invalid authorization scheme")
     token = authorization.split("Bearer ")[1]
     credentials_exception = HTTPException(
-        status_code=401,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
+        status_code=401, detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"}
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-        user = User(email=email, name=payload.get("name", ""), picture=payload.get("picture", ""))
+        if email is None: raise credentials_exception
+        user = db.query(User).filter(User.email == email).first()
+        if user is None:
+            user = User.from_orm(UserInfo(email=email, name=payload.get("name", ""), picture=payload.get("picture", "")))
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        return user
     except JWTError:
         raise credentials_exception
-    return user
 
+# ==============================================================================
+# 7. API ENDPOINTS
+# ==============================================================================
 
-# --- Routes ---
 @app.post("/auth/google")
-async def auth_google(google_token: GoogleToken):
+async def auth_google(google_token: GoogleToken, db: Session = Depends(get_session)):
     try:
         idinfo = id_token.verify_oauth2_token(google_token.token, requests.Request(), GOOGLE_CLIENT_ID)
-        user_info = UserInfo(
-            email=idinfo['email'],
-            name=idinfo.get('name', ''),
-            picture=idinfo.get('picture', '')
-        )
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        email = idinfo['email']
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            user = User(email=email, name=idinfo.get('name'), picture=idinfo.get('picture'))
+            db.add(user)
+            db.commit()
+            db.refresh(user)
         access_token = create_access_token(
-            data={"sub": user_info.email, "name": user_info.name, "picture": user_info.picture},
-            expires_delta=access_token_expires
+            data={"sub": user.email, "name": user.name, "picture": user.picture},
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         )
-        return {"access_token": access_token, "token_type": "bearer", "user_info": user_info.dict()}
+        return {"access_token": access_token, "token_type": "bearer", "user_info": UserInfo.from_orm(user)}
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid Google token")
 
 @app.post("/upload-pdf/")
-async def upload_pdf(current_user: User = Depends(get_current_user), file: UploadFile = File(...)):
-    user_id = current_user.email
-    if user_id not in user_data:
-        user_data[user_id] = {"pdfs": {}}
-
-    pdf_bytes = await file.read()
-    pdf_id = str(uuid.uuid4())
-    
-    user_data[user_id]["pdfs"][pdf_id] = {
-        "id": pdf_id,
-        "filename": file.filename,
-        "upload_date": datetime.now(timezone.utc),
-        "pdf_bytes": pdf_bytes,
-        "main_chat": None,
-        "branched_chats": {}
-    }
-    return {"id": pdf_id, "filename": file.filename}
+async def upload_pdf(current_user: User = Depends(get_current_user), file: UploadFile = File(...), db: Session = Depends(get_session)):
+    db_pdf = PDF(filename=file.filename, pdf_bytes=await file.read(), user_id=current_user.id)
+    db.add(db_pdf)
+    db.commit()
+    db.refresh(db_pdf)
+    return {"id": db_pdf.id, "filename": db_pdf.filename}
 
 @app.get("/get-pdfs/", response_model=List[PdfDetails])
 async def get_pdfs(current_user: User = Depends(get_current_user)):
-    user_id = current_user.email
-    if user_id not in user_data or not user_data[user_id].get("pdfs"):
-        return []
-    
-    pdf_list = [
-        PdfDetails(id=pdf["id"], filename=pdf["filename"], upload_date=pdf["upload_date"])
-        for pdf in user_data[user_id]["pdfs"].values()
-    ]
-    return pdf_list
+    return current_user.pdfs
 
 @app.get("/pdfs/{pdf_id}")
-async def get_pdf_file(pdf_id: str, current_user: User = Depends(get_current_user)):
-    user_id = current_user.email
-    if user_id not in user_data or pdf_id not in user_data[user_id]["pdfs"]:
-        raise HTTPException(status_code=404, detail="PDF not found")
+async def get_pdf_file(pdf_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
+    pdf = db.query(PDF).filter(PDF.id == pdf_id, PDF.user_id == current_user.id).first()
+    if not pdf: raise HTTPException(status_code=404, detail="PDF not found")
+    return Response(content=pdf.pdf_bytes, media_type="application/pdf")
 
-    pdf_bytes = user_data[user_id]["pdfs"][pdf_id]["pdf_bytes"]
-    return Response(content=pdf_bytes, media_type="application/pdf")
+def decode_base64_image(data_url: str) -> bytes:
+    match = re.match(r"^data:image/\w+;base64,(.+)", data_url)
+    if not match: raise ValueError("Invalid base64 image format.")
+    return base64.b64decode(match.group(1))
 
-async def stream_chat_response(chat_obj, prompt, initial_content=None):
+# --- Chat Helper Functions ---
+
+async def stream_and_save_chat(db: Session, db_chat: Chat, prompt_content: List[Any], pdf_bytes: Optional[bytes] = None):
+    # This is the core logic change. We build a temporary history for the AI,
+    # which is separate from the history we save to the database.
+    
+    history_for_ai = []
+    
+    # 1. If it's a new chat, prepend the PDF bytes for initial context.
+    if pdf_bytes:
+        history_for_ai.extend([
+            {"role": "user", "parts": [
+                {"mime_type": "application/pdf", "data": pdf_bytes},
+                "This is the document. I will ask follow-up questions about specific parts I highlight."
+            ]},
+            {"role": "model", "parts": ["Understood. I have processed the document. I'm ready."]}
+        ])
+    
+    # 2. Add the persistent, text-only history from the database.
+    history_for_ai.extend(db_chat.history)
+
+    # 3. Initialize the model and send the message.
+    model = genai.GenerativeModel(MODEL_NAME)
+    chat_session = model.start_chat(history=history_for_ai)
+    
+    # This is the user's new message. We will save THIS to the DB.
+    # The Gemini API handles dicts for multi-part messages correctly.
+    serializable_user_parts = []
+    for part in prompt_content:
+        if isinstance(part, str):
+            serializable_user_parts.append({"text": part})
+        # Note: We are not storing the image bytes in history, just the prompt text.
+        # A more advanced implementation might store a URI to the image.
+        elif isinstance(part, dict) and "text" in part:
+             serializable_user_parts.append(part)
+
+    db_chat.history.append({"role": "user", "parts": serializable_user_parts})
+    
+    full_response_text = ""
     try:
-        # For branching, construct the first message with context
-        if initial_content:
-            response_stream = chat_obj.send_message(initial_content, stream=True)
-        else: # For continuing, just send the prompt
-            response_stream = chat_obj.send_message(prompt, stream=True)
-            
+        response_stream = chat_session.send_message(prompt_content, stream=True)
         for chunk in response_stream:
             if chunk.text:
+                full_response_text += chunk.text
                 yield chunk.text
     except Exception as e:
         print(f"Error during streaming: {e}")
         yield f"An error occurred: {e}"
+        # Rollback the user message we optimistically added
+        db_chat.history.pop()
+        return
 
-def decode_base64_image(data_url: str) -> bytes:
-    match = re.match(r"^data:image/\w+;base64,(.+)", data_url)
-    if not match:
-        raise ValueError("Invalid base64 image format.")
-    return base64.b64decode(match.group(1))
+    # 4. Once streaming is done, save the new user and model messages to the DB.
+    db_chat.history.append({"role": "model", "parts": [{"text": full_response_text}]})
+    
+    db.add(db_chat)
+    db.commit()
 
-def get_or_create_main_chat(user_id: str, pdf_id: str):
-    pdf_info = user_data[user_id]["pdfs"][pdf_id]
-    if pdf_info["main_chat"] is None:
-        model = genai.GenerativeModel(MODEL_NAME)
-        pdf_chat = model.start_chat(history=[
-            {"role": "user", "parts": [
-                {"mime_type": "application/pdf", "data": pdf_info["pdf_bytes"]},
-                "This is the document. I will ask follow-up questions about specific parts I highlight."
-            ]},
-             {"role": "model", "parts": ["Understood. I have processed the document. I'm ready for your questions about specific sections."]}
-        ])
-        pdf_info["main_chat"] = pdf_chat
-    return pdf_info["main_chat"]
 
 @app.post("/branch-chat/")
-async def branch_chat(data: BranchInput, current_user: User = Depends(get_current_user)):
-    user_id = current_user.email
-    if user_id not in user_data or data.pdf_id not in user_data[user_id]["pdfs"]:
-        raise HTTPException(status_code=404, detail="PDF not found for this user.")
-
-    main_chat = get_or_create_main_chat(user_id, data.pdf_id)
+async def branch_chat(data: BranchInput, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
+    pdf_uuid = uuid.UUID(data.pdf_id)
+    pdf = db.query(PDF).filter(PDF.id == pdf_uuid, PDF.user_id == current_user.id).first()
+    if not pdf: raise HTTPException(status_code=404, detail="PDF not found.")
     
-    model = genai.GenerativeModel(MODEL_NAME)
-    branched = model.start_chat(history=main_chat.history)
-    user_data[user_id]["pdfs"][data.pdf_id]["branched_chats"][data.id] = branched
+    db_chat = db.query(Chat).filter(Chat.pdf_id == pdf_uuid, Chat.chat_id_str == data.id).first()
+    
+    # For a new chat, we pass the PDF bytes to the stream handler.
+    is_new_chat = not db_chat
+    if is_new_chat:
+        db_chat = Chat(chat_id_str=data.id, pdf_id=pdf_uuid, history=[])
+    
+    pdf_context_bytes = pdf.pdf_bytes if is_new_chat else None
 
-    initial_message_content = []
+    prompt_content = []
     if data.type == "text":
-        initial_message_content = [f"{data.prompt}\n\nHere is the relevant text from the document:\n{data.content}"]
+        prompt_content = [f"{data.prompt}\n\nRelevant text:\n{data.content}"]
     elif data.type == "image":
         try:
             image_bytes = decode_base64_image(data.content)
-            # The API expects prompt text and images to be separate parts
-            initial_message_content = [data.prompt, {"mime_type": "image/png", "data": image_bytes}]
+            prompt_content = [data.prompt, {"mime_type": "image/png", "data": image_bytes}]
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
     else:
-        raise HTTPException(status_code=400, detail="Invalid type. Use 'text' or 'image'.")
+        raise HTTPException(status_code=400, detail="Invalid type.")
 
-    return StreamingResponse(stream_chat_response(branched, data.prompt, initial_content=initial_message_content))
+    return StreamingResponse(stream_and_save_chat(db, db_chat, prompt_content, pdf_bytes=pdf_context_bytes))
 
 @app.post("/continue-chat/")
-async def continue_chat(data: ContinueInput, current_user: User = Depends(get_current_user)):
-    user_id = current_user.email
-    branched_chats = user_data.get(user_id, {}).get("pdfs", {}).get(data.pdf_id, {}).get("branched_chats", {})
+async def continue_chat(data: ContinueInput, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
+    pdf_uuid = uuid.UUID(data.pdf_id)
+    db_chat = db.query(Chat).join(PDF).filter(
+        Chat.pdf_id == pdf_uuid, Chat.chat_id_str == data.id, PDF.user_id == current_user.id
+    ).first()
+    if not db_chat: raise HTTPException(status_code=404, detail="Chat ID not found.")
     
-    if data.id not in branched_chats:
-        raise HTTPException(status_code=404, detail="Chat ID not found for this PDF.")
-
-    chat = branched_chats[data.id]
-    return StreamingResponse(stream_chat_response(chat, data.prompt))
+    # We pass None for pdf_bytes because the context is already established.
+    return StreamingResponse(stream_and_save_chat(db, db_chat, [data.prompt], pdf_bytes=None))
 
 @app.get("/pdf-chats/{pdf_id}", response_model=Dict[str, List[Dict[str, Any]]])
-async def get_all_chats(pdf_id: str, current_user: User = Depends(get_current_user)):
-    user_id = current_user.email
-    if user_id not in user_data or pdf_id not in user_data[user_id]["pdfs"]:
-        raise HTTPException(status_code=404, detail="PDF not found")
+async def get_all_chats(pdf_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
+    pdf = db.query(PDF).filter(PDF.id == pdf_id, PDF.user_id == current_user.id).first()
+    if not pdf: raise HTTPException(status_code=404, detail="PDF not found")
 
-    branched_chats = user_data[user_id]["pdfs"][pdf_id].get("branched_chats", {})
-    
     response_data: Dict[str, List[Dict[str, Any]]] = {}
-    
-    for chat_id, chat_session in branched_chats.items():
-        serializable_history = []
-        # Skip the first 2 turns (PDF upload and confirmation) from the main chat history
-        # and start with the actual user/model conversation.
-        for turn in chat_session.history[2:]:
-            text_parts = [part.text for part in turn.parts if hasattr(part, 'text')]
-            if text_parts:
-                # This structure now matches the frontend's ChatMessage interface
-                serializable_history.append({
-                    "role": turn.role,
-                    "parts": text_parts
-                })
-        response_data[chat_id] = serializable_history
+    for chat in pdf.chats:
+        # The history in the DB is now clean and doesn't need slicing.
+        frontend_history = []
+        for turn in chat.history:
+            text_parts = [part.get("text", "") for part in turn.get("parts", [])]
+            frontend_history.append({"role": turn.get("role"), "parts": text_parts})
+        response_data[chat.chat_id_str] = frontend_history
         
     return response_data
