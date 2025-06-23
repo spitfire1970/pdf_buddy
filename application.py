@@ -140,7 +140,11 @@ async def get_current_user(db: Session = Depends(get_session), authorization: st
     except JWTError:
         raise credentials_exception
 
-app.post("/auth/google")
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+
+@app.post("/auth/google")
 async def auth_google(google_token: GoogleToken, db: Session = Depends(get_session)):
     try:
         idinfo = id_token.verify_oauth2_token(google_token.token, requests.Request(), GOOGLE_CLIENT_ID)
