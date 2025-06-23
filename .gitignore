@@ -3,3 +3,4 @@ myenv
 .github
 .env
 __pycache__
+*.log

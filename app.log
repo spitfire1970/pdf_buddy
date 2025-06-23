@@ -1,3 +1,0 @@
-Creating database and tables...
-INFO:     127.0.0.1:58993 - "OPTIONS /get-pdfs/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58993 - "GET /get-pdfs/ HTTP/1.1" 200 OK

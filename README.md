@@ -3,6 +3,7 @@
 - ```npm run dev```
 - ```npx @biomejs/biome format --write ./src```
 - ```rm -rf node_modules/.vite```
+- REMEMBER to always run ```npx patch-package``` after npm install
 - delete all tables:
 ```
 DO $$ 
