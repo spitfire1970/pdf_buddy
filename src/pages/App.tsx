@@ -99,7 +99,7 @@ export function App() {
     pdfLoading,
     setIncomplete,
     setHighlights,
-    // NEW: Get the context setter for pending highlights
+    pendingHighlight,
     setPendingHighlight,
   } = usePdf();
   const { sidebarWidth, handleMouseDown } = useSidebarResizing(400);
@@ -190,7 +190,11 @@ export function App() {
                       position,
                       comment: { emoji: "💬", text: "" },
                     };
-
+                    if (pendingHighlight) {
+                      setHighlights(
+                        highlights.filter((h) => h.id !== pendingHighlight?.id),
+                      );
+                    }
                     // We add the highlight to the main list and get its new ID back.
                     addHighlight(newHighlightData, (newId) => {
                       const newHighlightWithId = {

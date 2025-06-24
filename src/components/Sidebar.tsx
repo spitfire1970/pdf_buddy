@@ -155,6 +155,7 @@ export function Sidebar() {
   );
 
   const handleSend = async () => {
+    if (!prompt.trim()) return;
     if (
       !activeChatId ||
       (!prompt.trim() && !pendingHighlight) ||
@@ -310,7 +311,10 @@ export function Sidebar() {
             ) : (
               <p className="text-gray-500 italic px-2">
                 Highlight a section of the PDF to start a chat, or press the '+'
-                icon for a general chat.
+                icon for a general chat.<br></br>
+                <br></br>
+                At any point, add specific context to your chat by holding the
+                ⌥/alt key and pressing enter!
               </p>
             )}
           </div>
@@ -399,7 +403,11 @@ export function Sidebar() {
       <div className="p-4 mt-auto border-t">
         <button
           type="button"
-          onClick={() => selectPdf(null)}
+          onClick={() => {
+            selectPdf(null);
+            setIncomplete(false);
+            setPendingHighlight(null);
+          }}
           className="w-full px-4 py-2 text-white font-semibold bg-gray-600 rounded hover:bg-gray-700"
         >
           Back to Dashboard
