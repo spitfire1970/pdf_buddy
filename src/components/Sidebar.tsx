@@ -150,7 +150,7 @@ export function Sidebar() {
       }}
       className="text-blue-600 hover:underline text-xs block mt-2"
     >
-      View Highlight
+      View Attached Context
     </a>
   );
 
