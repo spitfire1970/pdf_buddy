@@ -40,7 +40,8 @@ const latexOverflowFix = `
 `;
 
 export function Sidebar() {
-  const { highlights, selectPdf, selectedPdfId, incomplete, setIncomplete } = usePdf();
+  const { highlights, selectPdf, selectedPdfId, incomplete, setIncomplete } =
+    usePdf();
   const { token } = useAuth();
 
   const [view, setView] = useState<"list" | "chat">("list");
@@ -78,7 +79,7 @@ export function Sidebar() {
   }, [selectedPdfId, token]);
 
   useEffect(() => {
-    if (!incomplete) return
+    if (!incomplete) return;
     // This effect creates a new chat session in the UI when a new highlight is made
     if (highlights.length > 0 && filtered_highlights.length > 0) {
       const latestHighlight = filtered_highlights[0];
@@ -99,9 +100,13 @@ export function Sidebar() {
   useEffect(() => {
     if (view === "chat") {
       setTimeout(() => inputRef.current?.focus(), 0);
-      if (activeChatId) window.location.hash = "highlight-"+activeChatId;
-    }
-    else history.replaceState(null, "", window.location.pathname + window.location.search);
+      if (activeChatId) window.location.hash = "highlight-" + activeChatId;
+    } else
+      history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
   }, [view, activeChatId]);
 
   const handleSend = async () => {
@@ -121,12 +126,12 @@ export function Sidebar() {
     if (isNewChat) {
       const saveHighlightAndCreateChat = async () => {
         try {
-          console.log('idiot', actual_highlight)
-            const { "id": value, ...rest } = actual_highlight;
+          console.log("idiot", actual_highlight);
+          const { id: value, ...rest } = actual_highlight;
 
           const response = await axios.post(
             `${API_URL}/pdfs/${selectedPdfId}/highlights`,
-            { "highlight_id_str": value, ...rest }
+            { highlight_id_str: value, ...rest },
           );
         } catch (error) {
           console.error("Failed to save highlight:", error);

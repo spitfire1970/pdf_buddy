@@ -27,7 +27,7 @@ interface PdfContextType {
   pdfUrl: string | null; // This will now be a local blob URL
   pdfLoading: boolean;
   highlights: Array<IHighlight>;
-  setHighlights:(highlights:  Array<IHighlight>) => void;
+  setHighlights: (highlights: Array<IHighlight>) => void;
   addHighlight: (highlight: NewHighlight) => void;
   resetHighlights: () => void;
   incomplete: boolean;
@@ -112,7 +112,7 @@ export function PdfProvider({ children }: { children: ReactNode }) {
     setHighlights,
     resetHighlights,
     incomplete,
-    setIncomplete
+    setIncomplete,
   };
 
   return <PdfContext.Provider value={value}>{children}</PdfContext.Provider>;
