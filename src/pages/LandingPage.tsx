@@ -42,7 +42,7 @@ export function LandingPage() {
               </p>
             </div>
             <p className="text-lg font-semibold text-gray-200 mb-4">
-              You deserve better than a simple text extractor.
+              You deserve more than a simple text extractor.
             </p>
             <ul className="space-y-3 text-gray-400 text-sm">
               <li className="flex items-start md:items-center justify-center gap-2">

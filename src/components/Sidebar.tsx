@@ -171,10 +171,6 @@ export function Sidebar() {
     const actual_highlight = pendingHighlight;
     setPendingHighlight(null);
 
-    console.log("actual_highlight", actual_highlight);
-    console.log("contextHighlight", contextHighlight);
-
-    // CHANGED: The user message now includes the highlightId if available
     const userMessage: ChatMessage = {
       role: "user",
       parts: [currentPrompt],
@@ -212,21 +208,7 @@ export function Sidebar() {
       const sening_obj = actual_highlight
         ? cleanUpObject(actual_highlight)
         : null;
-      console.log(
-        "sending",
-        JSON.stringify({
-          pdf_id: selectedPdfId,
-          id: activeChatId,
-          prompt: currentPrompt,
-          // NEW: Send highlight ID to the backend
-          highlight_id: contextHighlight?.id,
-          // Provide context details only if a highlight is associated with this message
-          type: sening_obj ? sening_obj.type : "text",
-          content: sening_obj
-            ? sening_obj.context
-            : "just use the entire document as context",
-        }),
-      );
+
       const res = await fetch(API_URL + "/branched-chat/", {
         method: "POST",
         headers: {
