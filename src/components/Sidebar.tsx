@@ -313,8 +313,8 @@ export function Sidebar() {
                 Highlight a section of the PDF to start a chat, or press the '+'
                 icon for a general chat.<br></br>
                 <br></br>
-                At any point, add specific context to your chat by holding the
-                ⌥/alt key and pressing enter!
+                At any point, add specific context to your chat by holding
+                ⌥/alt and pressing enter!
               </p>
             )}
           </div>
@@ -338,27 +338,33 @@ export function Sidebar() {
             />
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
-            {(chats[activeChatId] || []).map((msg, idx) => (
-              <div
-                key={idx}
-                className={`p-3 rounded-lg max-w-[85%] whitespace-pre-wrap prose prose-sm break-words ${msg.role === "user" ? "bg-blue-100 ml-auto" : "bg-gray-200"}`}
-              >
-                {msg.parts.map((part, i) => (
-                  <ReactMarkdown
-                    key={i}
-                    remarkPlugins={[remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                    components={{ p: "span" }}
-                  >
-                    {part}
-                  </ReactMarkdown>
-                ))}
-                {/* NEW: Render the hyperlink if the message is linked to a highlight */}
-                {msg.role === "user" &&
-                  msg.highlightId &&
-                  renderHighlightLink(msg.highlightId)}
-              </div>
-            ))}
+            {(chats[activeChatId] || []).length === 0 ? (
+              <p className="text-gray-500 italic px-2">
+                At any point, add specific context to your chat by holding
+                ⌥/alt and pressing enter!
+              </p>
+            ) : (
+              (chats[activeChatId] || []).map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-lg max-w-[85%] whitespace-pre-wrap prose prose-sm break-words ${msg.role === "user" ? "bg-blue-100 ml-auto" : "bg-gray-200"}`}
+                >
+                  {msg.parts.map((part, i) => (
+                    <ReactMarkdown
+                      key={i}
+                      remarkPlugins={[remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      components={{ p: "span" }}
+                    >
+                      {part}
+                    </ReactMarkdown>
+                  ))}
+                  {msg.role === "user" &&
+                    msg.highlightId &&
+                    renderHighlightLink(msg.highlightId)}
+                </div>
+              ))
+            )}
             <div ref={messagesEndRef} />
           </div>
           <div className="border-t p-2 bg-white">
