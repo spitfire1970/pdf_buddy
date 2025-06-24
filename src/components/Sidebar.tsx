@@ -7,7 +7,6 @@ import "katex/dist/katex.min.css";
 import { usePdf } from "../contexts/PdfContext";
 import { useAuth } from "../contexts/AuthContext";
 import axios from "axios";
-import { type IHighlight } from "react-pdf-highlighter";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
