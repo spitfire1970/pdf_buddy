@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { ArrowLeft, SendHorizonal } from "lucide-react";
+import { ArrowLeft, SendHorizonal, Plus } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -58,32 +58,27 @@ export function Sidebar() {
 
   useEffect(() => {
     const fetchChats = async () => {
-      // Don't fetch if pdf or token is missing
       if (!token || !selectedPdfId) {
-        setChats({}); // Clear chats if no PDF is selected
+        setChats({});
         return;
       }
       try {
         const res = await axios.get(`${API_URL}/pdf-chats/${selectedPdfId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        // The backend now returns the exact object shape the state expects
         setChats(res.data);
       } catch (err) {
         console.error("Failed to fetch chats:", err);
-        setChats({}); // Clear chats on error
+        setChats({});
       }
     };
     fetchChats();
-    // FIX: Added token to dependency array for re-fetching on auth changes.
   }, [selectedPdfId, token]);
 
   useEffect(() => {
     if (!incomplete) return;
-    // This effect creates a new chat session in the UI when a new highlight is made
     if (highlights.length > 0 && filtered_highlights.length > 0) {
       const latestHighlight = filtered_highlights[0];
-      // If the latest highlight doesn't have a chat session yet, create one
       if (latestHighlight && !chats[latestHighlight.id]) {
         setActiveChatId(latestHighlight.id);
         setView("chat");
@@ -91,7 +86,7 @@ export function Sidebar() {
         setIncomplete(false);
       }
     }
-  }, [highlights, filtered_highlights, chats]);
+  }, [highlights, filtered_highlights, chats, incomplete, setIncomplete]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -101,13 +96,21 @@ export function Sidebar() {
     if (view === "chat") {
       setTimeout(() => inputRef.current?.focus(), 0);
       if (activeChatId) window.location.hash = "highlight-" + activeChatId;
-    } else
+    } else {
       history.replaceState(
         null,
         "",
         window.location.pathname + window.location.search,
       );
+    }
   }, [view, activeChatId]);
+
+  const handleNewChat = () => {
+    const newChatId = crypto.randomUUID();
+    setChats((prev) => ({ ...prev, [newChatId]: [] }));
+    setActiveChatId(newChatId);
+    setView("chat");
+  };
 
   const handleSend = async () => {
     if (!activeChatId || !prompt.trim() || !token || !selectedPdfId) return;
@@ -117,19 +120,16 @@ export function Sidebar() {
 
     const highlight = filtered_highlights.find((h) => h.id === activeChatId);
     const actual_highlight = highlights.find((h) => h.id === activeChatId);
-    if (!highlight || !actual_highlight) return;
 
-    // A chat is "new" if it has no messages from the model yet.
-    // We check for length > 0 because the user message is added first.
+    const isGeneralChat = !highlight;
     const isNewChat = (chats[activeChatId]?.length || 0) < 1;
 
-    if (isNewChat) {
+    if (isNewChat && !isGeneralChat && actual_highlight) {
       const saveHighlightAndCreateChat = async () => {
         try {
           console.log("idiot", actual_highlight);
           const { id: value, ...rest } = actual_highlight;
-
-          const response = await axios.post(
+          await axios.post(
             `${API_URL}/pdfs/${selectedPdfId}/highlights`,
             { highlight_id_str: value, ...rest },
           );
@@ -137,23 +137,21 @@ export function Sidebar() {
           console.error("Failed to save highlight:", error);
         }
       };
-
       saveHighlightAndCreateChat();
     }
+
     const endpoint = isNewChat ? "/branch-chat/" : "/continue-chat/";
 
-    // Immediately add user message and an empty model placeholder for the streaming response
     setChats((prev) => ({
       ...prev,
       [activeChatId]: [
         ...(prev[activeChatId] || []),
         { role: "user", parts: [currentPrompt] },
-        { role: "model", parts: [""] }, // Placeholder for streaming
+        { role: "model", parts: [""] },
       ],
     }));
 
     try {
-      // FIX: Using the API_URL variable for consistency
       const res = await fetch(API_URL + endpoint, {
         method: "POST",
         headers: {
@@ -164,14 +162,12 @@ export function Sidebar() {
           pdf_id: selectedPdfId,
           id: activeChatId,
           prompt: currentPrompt,
-          type: highlight.type,
-          content: highlight.context,
+          type: highlight ? highlight.type : "text",
+          content: highlight ? highlight.context : "just use the entire document as context",
         }),
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       if (!res.body) return;
 
       const reader = res.body.getReader();
@@ -182,14 +178,11 @@ export function Sidebar() {
         const chunk = decoder.decode(value, { stream: true });
         setChats((prev) => {
           const currentChat = prev[activeChatId] || [];
-          if (currentChat.length === 0) return prev; // Should not happen
-
-          // Update the last message (the model's response)
+          if (currentChat.length === 0) return prev;
           const updatedLastMessage = {
             ...currentChat[currentChat.length - 1],
             parts: [currentChat[currentChat.length - 1].parts[0] + chunk],
           };
-
           return {
             ...prev,
             [activeChatId]: [...currentChat.slice(0, -1), updatedLastMessage],
@@ -198,7 +191,6 @@ export function Sidebar() {
       }
     } catch (e) {
       console.error(e);
-      // Let user know something went wrong
       setChats((prev) => {
         const currentChat = prev[activeChatId] || [];
         if (currentChat.length === 0) return prev;
@@ -215,49 +207,72 @@ export function Sidebar() {
   };
 
   return (
-    <div className="w-full h-full flex flex-col overflow-auto text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
+    // NEW: Removed `overflow-auto` and added `overflow-hidden` to prevent the outer scrollbar
+    <div className="w-full h-full flex flex-col overflow-hidden text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
       <style>{latexOverflowFix}</style>
 
       {view === "list" && (
-        <div className="flex-1 p-4">
-          <h2 className="mb-4 text-xl font-semibold">Chats</h2>
-          {Object.keys(chats).length > 0 ? (
-            Object.entries(chats).map(([id, history]) => {
-              // Find the first user message for a better title
-              const firstUserMessage = history.find((m) => m.role === "user");
-              const title =
-                firstUserMessage?.parts[0] ||
-                `Chat about highlight ${id.slice(0, 5)}`;
-              return (
-                <div
-                  key={id}
-                  className="cursor-pointer border-b border-neutral-300 px-2 py-3 hover:bg-neutral-200"
-                  onClick={() => {
-                    setActiveChatId(id);
-                    setView("chat");
-                  }}
-                >
-                  {title.slice(0, 40)}...
-                </div>
-              );
-            })
-          ) : (
-            <p className="text-gray-500 italic">
-              Highlight a section of the PDF to start a chat. Hold ⌥ and select
-              area for images.
-            </p>
-          )}
+        // NEW: This container now handles its own scrolling if the chat list is long
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex justify-between items-center p-4">
+            <h2 className="text-xl font-semibold">Chats</h2>
+            <Plus
+              className="cursor-pointer text-neutral-500 hover:text-neutral-800"
+              onClick={handleNewChat}
+              size={24}
+            />
+          </div>
+          <div className="px-4 overflow-y-auto">
+            {Object.keys(chats).length > 0 ? (
+              Object.entries(chats).map(([id, history]) => {
+                const isHighlightChat = filtered_highlights.some(h => h.id === id);
+                const firstUserMessage = history.find((m) => m.role === "user");
+                const title =
+                  firstUserMessage?.parts[0] ||
+                  (isHighlightChat
+                    ? `Chat about highlight ${id.slice(0, 5)}`
+                    : "New Chat");
+                return (
+                  <div
+                    key={id}
+                    className="cursor-pointer border-b border-neutral-300 px-2 py-3 hover:bg-neutral-200"
+                    onClick={() => {
+                      setActiveChatId(id);
+                      setView("chat");
+                    }}
+                  >
+                    {title.slice(0, 40)}...
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-gray-500 italic px-2">
+                Highlight a section of the PDF to start a chat, or press the '+'
+                icon for a general chat.
+              </p>
+            )}
+          </div>
         </div>
       )}
 
       {view === "chat" && activeChatId && (
-        <div className="flex flex-col h-full">
-          <div className="flex items-center gap-2 p-2 border-b bg-white">
-            <ArrowLeft
-              className="cursor-pointer"
-              onClick={() => setView("list")}
+        // NEW: This container uses `flex-1` and `min-h-0` to correctly size itself
+        // within the main flex layout, which fixes the scrollbar issue.
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* NEW: Header now includes the Plus icon */}
+          <div className="flex items-center justify-between gap-2 p-2 border-b bg-white">
+            <div className="flex items-center gap-2">
+              <ArrowLeft
+                className="cursor-pointer"
+                onClick={() => setView("list")}
+              />
+              <h3 className="text-lg font-medium">Chat</h3>
+            </div>
+            <Plus
+              className="cursor-pointer text-neutral-500 hover:text-neutral-800 mr-2"
+              onClick={handleNewChat}
+              size={24}
             />
-            <h3 className="text-lg font-medium">Chat</h3>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
             {(chats[activeChatId] || []).map((msg, idx) => (
@@ -298,6 +313,7 @@ export function Sidebar() {
         </div>
       )}
 
+      {/* NEW: `mt-auto` ensures this button is pushed to the very bottom */}
       <div className="p-4 mt-auto border-t">
         <button
           type="button"

@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import {
   AreaHighlight,
   Highlight,
@@ -91,7 +91,6 @@ const AskInChatPopup = ({
 
 export function App() {
   const { user } = useAuth();
-  // Get pdfUrl (now a blob url) and the new pdfLoading state
   const {
     pdfUrl,
     highlights,
@@ -103,24 +102,35 @@ export function App() {
   } = usePdf();
   const { sidebarWidth, handleMouseDown } = useSidebarResizing(400);
   const scrollViewerTo = useRef<(highlight: IHighlight) => void>(() => {});
+  
+  // NEW: State to track the ID from the URL hash. This remains the same.
+  const [urlHash, setUrlHash] = useState(parseIdFromHash());
 
-  const scrollToHighlightFromHash = useCallback(() => {
-    const highlight = highlights.find((h) => h.id === parseIdFromHash());
-    if (highlight) {
-      scrollViewerTo.current(highlight);
-    }
-  }, [highlights]);
-
+  // NEW: Effect to sync the URL hash to our state variable.
   useEffect(() => {
-    window.addEventListener("hashchange", scrollToHighlightFromHash, false);
-    return () => {
-      window.removeEventListener(
-        "hashchange",
-        scrollToHighlightFromHash,
-        false,
-      );
+    const handleHashChange = () => {
+      setUrlHash(parseIdFromHash());
     };
-  }, [scrollToHighlightFromHash]);
+    window.addEventListener("hashchange", handleHashChange, false);
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange, false);
+    };
+  }, []);
+
+  // NEW: This is the definitive, corrected scrolling logic in a single place.
+  useEffect(() => {
+    if (!urlHash) return;
+
+    const highlightToScrollTo = highlights.find((h) => h.id === urlHash);
+
+    if (highlightToScrollTo && scrollViewerTo.current) {
+      // Use setTimeout to ensure the scroll happens after the render cycle.
+      setTimeout(() => {
+        scrollViewerTo.current(highlightToScrollTo);
+      }, 100);
+    }
+  }, [urlHash, highlights]); // Re-run when the hash changes or highlights data loads.
+
 
   useEffect(() => {
     const fetchHighlights = async () => {
@@ -141,7 +151,7 @@ export function App() {
                 ...rest,
               };
             }
-            return obj; // Return the original object if the key is not found
+            return obj;
           }),
         );
       } catch (error) {
@@ -150,25 +160,21 @@ export function App() {
     };
 
     fetchHighlights();
-  }, [selectedPdfId, pdfUrl]);
+  }, [selectedPdfId, pdfUrl, setHighlights]);
 
   if (!user) {
     return <LandingPage />;
   }
 
-  // If no PDF is selected, show the dashboard.
   if (!selectedPdfId) {
     return <Home />;
   }
 
-  // If a PDF is selected but the blob URL isn't ready yet, show a spinner.
   if (pdfLoading) {
     return <Spinner />;
   }
 
-  // If a PDF was selected but the URL failed to load, direct back to the Dashboard.
   if (!pdfUrl) {
-    // Optionally, you could show an error message here before redirecting.
     return <Home />;
   }
 
@@ -181,9 +187,9 @@ export function App() {
               pdfDocument={pdfDocument}
               enableAreaSelection={(event) => event.altKey}
               onScrollChange={resetHash}
+              // CHANGED: The scrollRef prop is now only responsible for capturing the function.
               scrollRef={(scrollTo) => {
                 scrollViewerTo.current = scrollTo;
-                scrollToHighlightFromHash();
               }}
               onSelectionFinished={(position, content, hideTipAndSelection) => (
                 <AskInChatPopup
@@ -200,16 +206,18 @@ export function App() {
                 />
               )}
               highlightTransform={(highlight, index, setTip, hideTip) => {
+                // CHANGED: We use the urlHash state to correctly style the scrolled-to highlight.
+                const isScrolledTo = highlight.id === urlHash;
                 const isTextHighlight = !highlight.content?.image;
                 const component = isTextHighlight ? (
                   <Highlight
-                    isScrolledTo={false}
+                    isScrolledTo={isScrolledTo}
                     position={highlight.position}
                     comment={highlight.comment}
                   />
                 ) : (
                   <AreaHighlight
-                    isScrolledTo={false}
+                    isScrolledTo={isScrolledTo}
                     highlight={highlight}
                     onChange={() => {}}
                   />
