@@ -139,7 +139,8 @@ export function App() {
         setHighlights(
           data.map((obj: any) => {
             if ("highlight_id_str" in obj) {
-              const { highlight_id_str: value, ...rest } = obj;
+              const { highlight_id_str: value, id: _dbId, ...rest } = obj;
+
               return {
                 id: value,
                 ...rest,
