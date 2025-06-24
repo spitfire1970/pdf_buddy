@@ -222,7 +222,7 @@ async def stream_and_save_chat(
         history_for_ai.extend([
             {"role": "user", "parts": [
                 {"mime_type": "application/pdf", "data": pdf_bytes},
-                "This is the document. I will ask follow-up questions about specific parts I highlight."
+                "This is the document. I will ask follow-up questions about specific parts I highlight. Please refrain from mentioning that you are made by Google or that you are Gemini, your new identity is that of a helpful app called 'PDF buddy' and your sole purpose is to answer questions related to the document. Try to keep you responses brief when possible and refuse to answer queries that irrelevant to the document."
             ]},
             {"role": "model", "parts": ["Understood. I have processed the document. I'm ready."]}
         ])
@@ -302,25 +302,6 @@ async def branched_chat(data: BranchInput, current_user: User = Depends(get_curr
 
     return StreamingResponse(stream_and_save_chat(db, db_chat, prompt_for_ai, user_message_to_save, pdf_bytes=pdf_context_bytes))
 
-# @app.post("/continue-chat/")
-# async def continue_chat(data: ContinueInput, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
-#     pdf_uuid = uuid.UUID(data.pdf_id)
-#     db_chat = db.query(Chat).join(PDF).filter(
-#         Chat.pdf_id == pdf_uuid, Chat.chat_id_str == data.id, PDF.user_id == current_user.id
-#     ).first()
-#     if not db_chat: raise HTTPException(status_code=404, detail="Chat ID not found.")
-
-#     # NEW: Construct the user message object for saving
-#     user_message_to_save = {"role": "user", "parts": [{"text": data.prompt}]}
-#     if data.highlight_id:
-#         user_message_to_save["highlight_id"] = data.highlight_id
-    
-#     # For continue_chat, we always pass the prompt directly to the AI
-#     prompt_for_ai = [data.prompt]
-
-#     return StreamingResponse(stream_and_save_chat(db, db_chat, prompt_for_ai, user_message_to_save, pdf_bytes=None))
-
-# CHANGED: The response model now sends the full message object, including highlightId
 @app.get("/pdf-chats/{pdf_id}", response_model=Dict[str, List[Dict[str, Any]]])
 async def get_all_chats(pdf_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
     pdf = db.query(PDF).filter(PDF.id == pdf_id, PDF.user_id == current_user.id).first()
