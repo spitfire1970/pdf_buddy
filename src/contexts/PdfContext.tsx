@@ -27,8 +27,11 @@ interface PdfContextType {
   pdfUrl: string | null; // This will now be a local blob URL
   pdfLoading: boolean;
   highlights: Array<IHighlight>;
+  setHighlights:(highlights:  Array<IHighlight>) => void;
   addHighlight: (highlight: NewHighlight) => void;
   resetHighlights: () => void;
+  incomplete: boolean;
+  setIncomplete: (val: boolean) => void;
 }
 
 const PdfContext = createContext<PdfContextType | undefined>(undefined);
@@ -40,6 +43,7 @@ export function PdfProvider({ children }: { children: ReactNode }) {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState<boolean>(false);
   const [highlights, setHighlights] = useState<Array<IHighlight>>([]);
+  const [incomplete, setIncomplete] = useState<boolean>(false);
 
   // Effect to fetch PDF blob when selectedPdfId changes
   useEffect(() => {
@@ -105,7 +109,10 @@ export function PdfProvider({ children }: { children: ReactNode }) {
     pdfLoading,
     highlights,
     addHighlight,
+    setHighlights,
     resetHighlights,
+    incomplete,
+    setIncomplete
   };
 
   return <PdfContext.Provider value={value}>{children}</PdfContext.Provider>;

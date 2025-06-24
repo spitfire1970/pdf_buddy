@@ -40,7 +40,7 @@ const latexOverflowFix = `
 `;
 
 export function Sidebar() {
-  const { highlights, selectPdf, selectedPdfId } = usePdf();
+  const { highlights, selectPdf, selectedPdfId, incomplete, setIncomplete } = usePdf();
   const { token } = useAuth();
 
   const [view, setView] = useState<"list" | "chat">("list");
@@ -78,6 +78,7 @@ export function Sidebar() {
   }, [selectedPdfId, token]);
 
   useEffect(() => {
+    if (!incomplete) return
     // This effect creates a new chat session in the UI when a new highlight is made
     if (highlights.length > 0 && filtered_highlights.length > 0) {
       const latestHighlight = filtered_highlights[0];
@@ -86,6 +87,7 @@ export function Sidebar() {
         setActiveChatId(latestHighlight.id);
         setView("chat");
         setChats((prev) => ({ ...prev, [latestHighlight.id]: [] }));
+        setIncomplete(false);
       }
     }
   }, [highlights, filtered_highlights, chats]);
@@ -97,7 +99,9 @@ export function Sidebar() {
   useEffect(() => {
     if (view === "chat") {
       setTimeout(() => inputRef.current?.focus(), 0);
+      if (activeChatId) window.location.hash = "highlight-"+activeChatId;
     }
+    else history.replaceState(null, "", window.location.pathname + window.location.search);
   }, [view, activeChatId]);
 
   const handleSend = async () => {
@@ -107,11 +111,30 @@ export function Sidebar() {
     setPrompt("");
 
     const highlight = filtered_highlights.find((h) => h.id === activeChatId);
-    if (!highlight) return;
+    const actual_highlight = highlights.find((h) => h.id === activeChatId);
+    if (!highlight || !actual_highlight) return;
 
     // A chat is "new" if it has no messages from the model yet.
     // We check for length > 0 because the user message is added first.
     const isNewChat = (chats[activeChatId]?.length || 0) < 1;
+
+    if (isNewChat) {
+      const saveHighlightAndCreateChat = async () => {
+        try {
+          console.log('idiot', actual_highlight)
+            const { "id": value, ...rest } = actual_highlight;
+
+          const response = await axios.post(
+            `${API_URL}/pdfs/${selectedPdfId}/highlights`,
+            { "highlight_id_str": value, ...rest }
+          );
+        } catch (error) {
+          console.error("Failed to save highlight:", error);
+        }
+      };
+
+      saveHighlightAndCreateChat();
+    }
     const endpoint = isNewChat ? "/branch-chat/" : "/continue-chat/";
 
     // Immediately add user message and an empty model placeholder for the streaming response

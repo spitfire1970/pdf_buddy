@@ -15,6 +15,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { usePdf } from "../contexts/PdfContext";
 import { useSidebarResizing } from "../hooks/useSidebarResizing";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 const parseIdFromHash = () =>
   document.location.hash.slice("#highlight-".length);
 const resetHash = () => {
@@ -90,7 +92,7 @@ const AskInChatPopup = ({
 export function App() {
   const { user } = useAuth();
   // Get pdfUrl (now a blob url) and the new pdfLoading state
-  const { pdfUrl, highlights, addHighlight, selectedPdfId, pdfLoading } =
+  const { pdfUrl, highlights, addHighlight, selectedPdfId, pdfLoading, setIncomplete, setHighlights } =
     usePdf();
   const { sidebarWidth, handleMouseDown } = useSidebarResizing(400);
   const scrollViewerTo = useRef<(highlight: IHighlight) => void>(() => {});
@@ -112,6 +114,32 @@ export function App() {
       );
     };
   }, [scrollToHighlightFromHash]);
+
+  useEffect(() => {
+  const fetchHighlights = async () => {
+    if (!selectedPdfId || !pdfUrl) return;
+
+    try {
+      const response = await fetch(`${API_URL}/pdfs/${selectedPdfId}/highlights`);
+      if (!response.ok) throw new Error("Failed to fetch highlights");
+      const data = await response.json();
+      setHighlights(data.map((obj: any) => {
+  if ("highlight_id_str" in obj) {
+    const { "highlight_id_str": value, ...rest } = obj;
+    return {
+      "id": value,
+      ...rest,
+    };
+  }
+  return obj; // Return the original object if the key is not found
+}));
+    } catch (error) {
+      console.error("Error fetching highlights:", error);
+    }
+  };
+
+  fetchHighlights();
+  }, [selectedPdfId, pdfUrl]);
 
   if (!user) {
     return <LandingPage />;
@@ -154,6 +182,7 @@ export function App() {
                       position,
                       comment: { emoji: "🔥", text: "fire" },
                     });
+                    setIncomplete(true)
                     hideTipAndSelection();
                   }}
                   onCancel={hideTipAndSelection}

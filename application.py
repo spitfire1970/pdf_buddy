@@ -53,6 +53,17 @@ class PDF(SQLModel, table=True):
     user_id: int = Field(foreign_key="user.id")
     user: User = Relationship(back_populates="pdfs")
     chats: List["Chat"] = Relationship(back_populates="pdf")
+    highlights: List["Highlight"] = Relationship(back_populates="pdf")
+
+class Highlight(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    highlight_id_str: str = Field(index=True) 
+    content: Dict[str, Any] = Field(sa_column=Column(JSONB))
+    position: Dict[str, Any] = Field(sa_column=Column(JSONB))
+    comment: Dict[str, Any] = Field(sa_column=Column(JSONB))
+
+    pdf_id: uuid.UUID = Field(foreign_key="pdf.id")
+    pdf: "PDF" = Relationship(back_populates="highlights")
 
 class Chat(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -78,6 +89,12 @@ async def lifespan(app: FastAPI):
 class BaseModel(PydanticBaseModel):
     class Config:
         from_attributes = True
+
+class HighlightCreate(BaseModel):
+    highlight_id_str: str
+    content: Dict[str, Any]
+    position: Dict[str, Any]
+    comment: Dict[str, Any]
 
 class GoogleToken(BaseModel):
     token: str
@@ -300,3 +317,32 @@ async def get_all_chats(pdf_id: uuid.UUID, current_user: User = Depends(get_curr
         response_data[chat.chat_id_str] = frontend_history
         
     return response_data
+
+@app.get("/pdfs/{pdf_id}/highlights", response_model=List[Highlight])
+def get_highlights_for_pdf(pdf_id: uuid.UUID, session: Session = Depends(get_session)):
+    pdf = session.get(PDF, pdf_id)
+    if not pdf:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    return pdf.highlights
+
+@app.post("/pdfs/{pdf_id}/highlights", response_model=Highlight, tags=["Highlights"])
+def create_highlight_for_pdf(
+    pdf_id: uuid.UUID,
+    highlight_data: HighlightCreate,
+    session: Session = Depends(get_session)
+):
+    pdf = session.get(PDF, pdf_id)
+    if not pdf:
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    db_highlight = Highlight(
+        **highlight_data.model_dump(), 
+        pdf_id=pdf_id
+    )
+
+    session.add(db_highlight)
+    session.commit()
+    
+    session.refresh(db_highlight)
+
+    return db_highlight
