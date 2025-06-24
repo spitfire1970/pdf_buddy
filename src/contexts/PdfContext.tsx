@@ -24,14 +24,20 @@ interface PdfContextType {
   setPdfs: (pdfs: Pdf[]) => void;
   selectedPdfId: string | null;
   selectPdf: (id: string | null) => void;
-  pdfUrl: string | null; // This will now be a local blob URL
+  pdfUrl: string | null;
   pdfLoading: boolean;
   highlights: Array<IHighlight>;
   setHighlights: (highlights: Array<IHighlight>) => void;
-  addHighlight: (highlight: NewHighlight) => void;
+  addHighlight: (
+    highlight: NewHighlight,
+    callback?: (id: string) => void,
+  ) => void;
   resetHighlights: () => void;
   incomplete: boolean;
   setIncomplete: (val: boolean) => void;
+  // NEW: State for a highlight selected while a chat is open
+  pendingHighlight: IHighlight | null;
+  setPendingHighlight: (highlight: IHighlight | null) => void;
 }
 
 const PdfContext = createContext<PdfContextType | undefined>(undefined);
@@ -44,10 +50,12 @@ export function PdfProvider({ children }: { children: ReactNode }) {
   const [pdfLoading, setPdfLoading] = useState<boolean>(false);
   const [highlights, setHighlights] = useState<Array<IHighlight>>([]);
   const [incomplete, setIncomplete] = useState<boolean>(false);
+  // NEW: State for holding a highlight to be used as context in an existing chat.
+  const [pendingHighlight, setPendingHighlight] = useState<IHighlight | null>(
+    null,
+  );
 
-  // Effect to fetch PDF blob when selectedPdfId changes
   useEffect(() => {
-    // If there's an old blob URL, revoke it to prevent memory leaks
     if (pdfUrl) {
       URL.revokeObjectURL(pdfUrl);
     }
@@ -62,7 +70,7 @@ export function PdfProvider({ children }: { children: ReactNode }) {
       try {
         const response = await axios.get(`${API_URL}/pdfs/${selectedPdfId}`, {
           headers: { Authorization: `Bearer ${token}` },
-          responseType: "blob", // Important: we want the raw file data
+          responseType: "blob",
         });
         const blob = new Blob([response.data], { type: "application/pdf" });
         const localUrl = URL.createObjectURL(blob);
@@ -77,24 +85,31 @@ export function PdfProvider({ children }: { children: ReactNode }) {
 
     fetchPdfBlob();
 
-    // Cleanup function to revoke the blob URL when the component unmounts
-    // or when the dependency array changes before the next run.
     return () => {
       if (pdfUrl) {
         URL.revokeObjectURL(pdfUrl);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPdfId, token]);
 
   const selectPdf = useCallback((id: string | null) => {
     setSelectedPdfId(id);
     setHighlights([]);
+    setPendingHighlight(null); // NEW: Clear pending highlight on PDF change
   }, []);
 
-  const addHighlight = useCallback((highlight: NewHighlight) => {
-    setHighlights((prev) => [{ ...highlight, id: getNextId() }, ...prev]);
-  }, []);
+  // CHANGED: addHighlight can now accept a callback to get the new highlight's ID
+  const addHighlight = useCallback(
+    (highlight: NewHighlight, callback?: (id: string) => void) => {
+      const newId = getNextId();
+      const newHighlight = { ...highlight, id: newId };
+      setHighlights((prev) => [newHighlight, ...prev]);
+      if (callback) {
+        callback(newId);
+      }
+    },
+    [],
+  );
 
   const resetHighlights = useCallback(() => {
     setHighlights([]);
@@ -113,6 +128,8 @@ export function PdfProvider({ children }: { children: ReactNode }) {
     resetHighlights,
     incomplete,
     setIncomplete,
+    pendingHighlight,
+    setPendingHighlight,
   };
 
   return <PdfContext.Provider value={value}>{children}</PdfContext.Provider>;

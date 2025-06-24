@@ -34,7 +34,7 @@ MODEL_NAME = "gemini-1.5-flash"
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set.")
 
-genai.configure(api_key=GEMINI_API_KEY)
+genai.configure(api_key="AIzaSyCFRrbdc1uO1ZOqGc2Ej_0ZnLmfxntMp6M")
 
 engine = create_engine(DATABASE_URL, echo=False)
 
@@ -68,6 +68,7 @@ class Highlight(SQLModel, table=True):
 class Chat(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     chat_id_str: str = Field(index=True) 
+    # CHANGED: The history can now contain more complex objects, not just text parts.
     history: List[Dict[str, Any]] = Field(default=[], sa_column=Column(JSONB))
     pdf_id: uuid.UUID = Field(foreign_key="pdf.id")
     pdf: PDF = Relationship(back_populates="chats")
@@ -109,17 +110,21 @@ class PdfDetails(BaseModel):
     filename: str
     upload_date: datetime
 
+# CHANGED: Pydantic models now accept an optional highlight_id
 class BranchInput(BaseModel):
     pdf_id: str
     id: str
     type: str
     content: str
     prompt: str
+    highlight_id: Optional[str] = None
 
 class ContinueInput(BaseModel):
     pdf_id: str
     id: str
     prompt: str
+    highlight_id: Optional[str] = None
+
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(
@@ -203,15 +208,16 @@ def decode_base64_image(data_url: str) -> bytes:
     if not match: raise ValueError("Invalid base64 image format.")
     return base64.b64decode(match.group(1))
 
-# --- Chat Helper Functions ---
 
-async def stream_and_save_chat(db: Session, db_chat: Chat, prompt_content: List[Any], pdf_bytes: Optional[bytes] = None):
-    # This is the core logic change. We build a temporary history for the AI,
-    # which is separate from the history we save to the database.
-    
+async def stream_and_save_chat(
+    db: Session,
+    db_chat: Chat,
+    prompt_for_ai: List[Any],
+    user_message_to_save: Dict[str, Any],
+    pdf_bytes: Optional[bytes] = None
+):
     history_for_ai = []
     
-    # 1. If it's a new chat, prepend the PDF bytes for initial context.
     if pdf_bytes:
         history_for_ai.extend([
             {"role": "user", "parts": [
@@ -221,29 +227,29 @@ async def stream_and_save_chat(db: Session, db_chat: Chat, prompt_content: List[
             {"role": "model", "parts": ["Understood. I have processed the document. I'm ready."]}
         ])
     
-    # 2. Add the persistent, text-only history from the database.
-    history_for_ai.extend(db_chat.history)
+    # Add persistent history. We only need the text parts for the AI's context.
+    for turn in db_chat.history:
+        # Reconstruct history for the AI model, ensuring it's in the correct format
+        ai_turn = {"role": turn["role"], "parts": []}
+        for part in turn.get("parts", []):
+             if isinstance(part, dict) and "text" in part:
+                 ai_turn["parts"].append(part["text"])
+             elif isinstance(part, str): # Legacy format support
+                 ai_turn["parts"].append(part)
+        history_for_ai.append(ai_turn)
 
-    # 3. Initialize the model and send the message.
+
     model = genai.GenerativeModel(MODEL_NAME)
     chat_session = model.start_chat(history=history_for_ai)
     
-    # This is the user's new message. We will save THIS to the DB.
-    # The Gemini API handles dicts for multi-part messages correctly.
-    serializable_user_parts = []
-    for part in prompt_content:
-        if isinstance(part, str):
-            serializable_user_parts.append({"text": part})
-        # Note: We are not storing the image bytes in history, just the prompt text.
-        # A more advanced implementation might store a URI to the image.
-        elif isinstance(part, dict) and "text" in part:
-             serializable_user_parts.append(part)
-
-    db_chat.history.append({"role": "user", "parts": serializable_user_parts})
+    # Create a temporary copy of the history to modify.
+    # This ensures we don't change the DB state until the transaction is complete.
+    temp_history = list(db_chat.history)
+    temp_history.append(user_message_to_save)
     
     full_response_text = ""
     try:
-        response_stream = chat_session.send_message(prompt_content, stream=True)
+        response_stream = chat_session.send_message(prompt_for_ai, stream=True)
         for chunk in response_stream:
             if chunk.text:
                 full_response_text += chunk.text
@@ -251,57 +257,70 @@ async def stream_and_save_chat(db: Session, db_chat: Chat, prompt_content: List[
     except Exception as e:
         print(f"Error during streaming: {e}")
         yield f"An error occurred: {e}"
-        # Rollback the user message we optimistically added
-        db_chat.history.pop()
+        # If an error occurs, we simply return and do not commit any changes.
         return
 
-    # 4. Once streaming is done, save the new user and model messages to the DB.
-    db_chat.history.append({"role": "model", "parts": [{"text": full_response_text}]})
+    # On success, save the model's response to our temporary history.
+    temp_history.append({"role": "model", "parts": [{"text": full_response_text}]})
+    
+    # Assign the updated temporary history back to the database object.
+    # This assignment explicitly marks the attribute as modified for SQLAlchemy.
+    db_chat.history = temp_history
     
     db.add(db_chat)
     db.commit()
 
 
-@app.post("/branch-chat/")
-async def branch_chat(data: BranchInput, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
+@app.post("/branched-chat/")
+async def branched_chat(data: BranchInput, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
     pdf_uuid = uuid.UUID(data.pdf_id)
     pdf = db.query(PDF).filter(PDF.id == pdf_uuid, PDF.user_id == current_user.id).first()
     if not pdf: raise HTTPException(status_code=404, detail="PDF not found.")
     
     db_chat = db.query(Chat).filter(Chat.pdf_id == pdf_uuid, Chat.chat_id_str == data.id).first()
     
-    # For a new chat, we pass the PDF bytes to the stream handler.
     is_new_chat = not db_chat
     if is_new_chat:
         db_chat = Chat(chat_id_str=data.id, pdf_id=pdf_uuid, history=[])
     
-    pdf_context_bytes = pdf.pdf_bytes if is_new_chat else None
+    pdf_context_bytes = pdf.pdf_bytes
 
-    prompt_content = []
+    prompt_for_ai = []
     if data.type == "text":
-        prompt_content = [f"{data.prompt}\n\nRelevant text:\n{data.content}"]
+        prompt_for_ai = [f"{data.prompt}\n\nRelevant text:\n{data.content}"]
     elif data.type == "image":
         try:
             image_bytes = decode_base64_image(data.content)
-            prompt_content = [data.prompt, {"mime_type": "image/png", "data": image_bytes}]
+            prompt_for_ai = [data.prompt, {"mime_type": "image/png", "data": image_bytes}]
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-    else:
-        raise HTTPException(status_code=400, detail="Invalid type.")
-
-    return StreamingResponse(stream_and_save_chat(db, db_chat, prompt_content, pdf_bytes=pdf_context_bytes))
-
-@app.post("/continue-chat/")
-async def continue_chat(data: ContinueInput, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
-    pdf_uuid = uuid.UUID(data.pdf_id)
-    db_chat = db.query(Chat).join(PDF).filter(
-        Chat.pdf_id == pdf_uuid, Chat.chat_id_str == data.id, PDF.user_id == current_user.id
-    ).first()
-    if not db_chat: raise HTTPException(status_code=404, detail="Chat ID not found.")
     
-    # We pass None for pdf_bytes because the context is already established.
-    return StreamingResponse(stream_and_save_chat(db, db_chat, [data.prompt], pdf_bytes=None))
+    # NEW: Construct the user message object that we want to save in the DB
+    user_message_to_save = {"role": "user", "parts": [{"text": data.prompt}]}
+    if data.highlight_id:
+        user_message_to_save["highlight_id"] = data.highlight_id
 
+    return StreamingResponse(stream_and_save_chat(db, db_chat, prompt_for_ai, user_message_to_save, pdf_bytes=pdf_context_bytes))
+
+# @app.post("/continue-chat/")
+# async def continue_chat(data: ContinueInput, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
+#     pdf_uuid = uuid.UUID(data.pdf_id)
+#     db_chat = db.query(Chat).join(PDF).filter(
+#         Chat.pdf_id == pdf_uuid, Chat.chat_id_str == data.id, PDF.user_id == current_user.id
+#     ).first()
+#     if not db_chat: raise HTTPException(status_code=404, detail="Chat ID not found.")
+
+#     # NEW: Construct the user message object for saving
+#     user_message_to_save = {"role": "user", "parts": [{"text": data.prompt}]}
+#     if data.highlight_id:
+#         user_message_to_save["highlight_id"] = data.highlight_id
+    
+#     # For continue_chat, we always pass the prompt directly to the AI
+#     prompt_for_ai = [data.prompt]
+
+#     return StreamingResponse(stream_and_save_chat(db, db_chat, prompt_for_ai, user_message_to_save, pdf_bytes=None))
+
+# CHANGED: The response model now sends the full message object, including highlightId
 @app.get("/pdf-chats/{pdf_id}", response_model=Dict[str, List[Dict[str, Any]]])
 async def get_all_chats(pdf_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
     pdf = db.query(PDF).filter(PDF.id == pdf_id, PDF.user_id == current_user.id).first()
@@ -309,11 +328,18 @@ async def get_all_chats(pdf_id: uuid.UUID, current_user: User = Depends(get_curr
 
     response_data: Dict[str, List[Dict[str, Any]]] = {}
     for chat in pdf.chats:
-        # The history in the DB is now clean and doesn't need slicing.
         frontend_history = []
         for turn in chat.history:
+            # Reconstruct the message object for the frontend
             text_parts = [part.get("text", "") for part in turn.get("parts", [])]
-            frontend_history.append({"role": turn.get("role"), "parts": text_parts})
+            # Create a base message
+            message_for_frontend = {"role": turn.get("role"), "parts": text_parts}
+            # If a highlight_id exists in the DB record, add it to the object
+            if "highlight_id" in turn:
+                message_for_frontend["highlightId"] = turn["highlight_id"]
+            
+            frontend_history.append(message_for_frontend)
+            
         response_data[chat.chat_id_str] = frontend_history
         
     return response_data

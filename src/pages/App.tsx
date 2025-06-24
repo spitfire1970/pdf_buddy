@@ -99,14 +99,14 @@ export function App() {
     pdfLoading,
     setIncomplete,
     setHighlights,
+    // NEW: Get the context setter for pending highlights
+    setPendingHighlight,
   } = usePdf();
   const { sidebarWidth, handleMouseDown } = useSidebarResizing(400);
   const scrollViewerTo = useRef<(highlight: IHighlight) => void>(() => {});
-  
-  // NEW: State to track the ID from the URL hash. This remains the same.
+
   const [urlHash, setUrlHash] = useState(parseIdFromHash());
 
-  // NEW: Effect to sync the URL hash to our state variable.
   useEffect(() => {
     const handleHashChange = () => {
       setUrlHash(parseIdFromHash());
@@ -117,25 +117,19 @@ export function App() {
     };
   }, []);
 
-  // NEW: This is the definitive, corrected scrolling logic in a single place.
   useEffect(() => {
     if (!urlHash) return;
-
     const highlightToScrollTo = highlights.find((h) => h.id === urlHash);
-
     if (highlightToScrollTo && scrollViewerTo.current) {
-      // Use setTimeout to ensure the scroll happens after the render cycle.
       setTimeout(() => {
         scrollViewerTo.current(highlightToScrollTo);
       }, 100);
     }
-  }, [urlHash, highlights]); // Re-run when the hash changes or highlights data loads.
-
+  }, [urlHash, highlights]);
 
   useEffect(() => {
     const fetchHighlights = async () => {
       if (!selectedPdfId || !pdfUrl) return;
-
       try {
         const response = await fetch(
           `${API_URL}/pdfs/${selectedPdfId}/highlights`,
@@ -158,22 +152,18 @@ export function App() {
         console.error("Error fetching highlights:", error);
       }
     };
-
     fetchHighlights();
   }, [selectedPdfId, pdfUrl, setHighlights]);
 
   if (!user) {
     return <LandingPage />;
   }
-
   if (!selectedPdfId) {
     return <Home />;
   }
-
   if (pdfLoading) {
     return <Spinner />;
   }
-
   if (!pdfUrl) {
     return <Home />;
   }
@@ -187,26 +177,38 @@ export function App() {
               pdfDocument={pdfDocument}
               enableAreaSelection={(event) => event.altKey}
               onScrollChange={resetHash}
-              // CHANGED: The scrollRef prop is now only responsible for capturing the function.
               scrollRef={(scrollTo) => {
                 scrollViewerTo.current = scrollTo;
               }}
               onSelectionFinished={(position, content, hideTipAndSelection) => (
                 <AskInChatPopup
                   onConfirm={() => {
-                    addHighlight({
+                    // CHANGED: The logic for handling a new highlight is updated.
+                    const newHighlightData = {
                       content,
                       position,
-                      comment: { emoji: "🔥", text: "fire" },
+                      comment: { emoji: "💬", text: "" },
+                    };
+
+                    // We add the highlight to the main list and get its new ID back.
+                    addHighlight(newHighlightData, (newId) => {
+                      const newHighlightWithId = {
+                        ...newHighlightData,
+                        id: newId,
+                      };
+                      // We set it as the pending highlight for the chat sidebar to use.
+                      setPendingHighlight(newHighlightWithId);
+                      // We also set `incomplete` to true. The sidebar will decide what to do
+                      // based on its current view (list or chat).
+                      setIncomplete(true);
                     });
-                    setIncomplete(true);
+
                     hideTipAndSelection();
                   }}
                   onCancel={hideTipAndSelection}
                 />
               )}
               highlightTransform={(highlight, index, setTip, hideTip) => {
-                // CHANGED: We use the urlHash state to correctly style the scrolled-to highlight.
                 const isScrolledTo = highlight.id === urlHash;
                 const isTextHighlight = !highlight.content?.image;
                 const component = isTextHighlight ? (

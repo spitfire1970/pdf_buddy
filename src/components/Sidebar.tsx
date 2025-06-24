@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { ArrowLeft, SendHorizonal, Plus } from "lucide-react";
+import { ArrowLeft, SendHorizonal, Plus, Paperclip, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -7,41 +7,52 @@ import "katex/dist/katex.min.css";
 import { usePdf } from "../contexts/PdfContext";
 import { useAuth } from "../contexts/AuthContext";
 import axios from "axios";
+import { type IHighlight } from "react-pdf-highlighter";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-interface InputObject {
+// Interface for raw highlight object from context
+interface IHighlightObject {
   id: string;
   content: { text?: string; image?: string };
 }
-interface CleanObject {
+// Interface for cleaned up object
+interface CleanHighlight {
   id: string;
   type: "text" | "image";
   context: string;
 }
+// CHANGED: ChatMessage now includes an optional highlightId
 interface ChatMessage {
   role: "user" | "model";
   parts: string[];
+  highlightId?: string; // To link a message to a highlight
 }
 
-function cleanUpObject(obj: InputObject): CleanObject {
+function cleanUpObject(obj: IHighlightObject): CleanHighlight {
   const { id, content } = obj;
   if (content.text) return { id, type: "text", context: content.text };
   if (content.image) return { id, type: "image", context: content.image };
   throw new Error("Invalid object: content must contain either text or image.");
 }
 
-const latexOverflowFix = `
-  .prose .katex-display {
+const latexOverflowFix = `.prose .katex-display {
     overflow-x: auto;
     overflow-y: hidden;
     padding: 0.5em 0.2em;
-  }
-`;
+  };`;
 
 export function Sidebar() {
-  const { highlights, selectPdf, selectedPdfId, incomplete, setIncomplete } =
-    usePdf();
+  const {
+    highlights,
+    selectPdf,
+    selectedPdfId,
+    incomplete,
+    setIncomplete,
+    setHighlights,
+    pendingHighlight,
+    setPendingHighlight,
+  } = usePdf();
   const { token } = useAuth();
 
   const [view, setView] = useState<"list" | "chat">("list");
@@ -75,84 +86,149 @@ export function Sidebar() {
     fetchChats();
   }, [selectedPdfId, token]);
 
+  // CHANGED: This effect now conditionally starts a new chat.
   useEffect(() => {
-    if (!incomplete) return;
-    if (highlights.length > 0 && filtered_highlights.length > 0) {
-      const latestHighlight = filtered_highlights[0];
-      if (latestHighlight && !chats[latestHighlight.id]) {
-        setActiveChatId(latestHighlight.id);
+    // Only trigger a new chat if a highlight was just made (`incomplete`)
+    // AND we are in the "list" view.
+    if (incomplete && view === "list" && pendingHighlight) {
+      const newChatId = pendingHighlight.id;
+      if (!chats[newChatId]) {
+        setActiveChatId(newChatId);
         setView("chat");
-        setChats((prev) => ({ ...prev, [latestHighlight.id]: [] }));
-        setIncomplete(false);
+        setChats((prev) => ({ ...prev, [newChatId]: [] }));
       }
+      setIncomplete(false);
+    } else if (incomplete) {
+      // If we are in "chat" view, we don't start a new chat. We just acknowledge
+      // the action is done and wait for the user to send a prompt.
+      setIncomplete(false);
     }
-  }, [highlights, filtered_highlights, chats, incomplete, setIncomplete]);
+  }, [
+    incomplete,
+    view,
+    pendingHighlight,
+    chats,
+    setIncomplete,
+    setPendingHighlight,
+  ]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chats, activeChatId]);
 
   useEffect(() => {
-    if (view === "chat") {
+    if (pendingHighlight) {
       setTimeout(() => inputRef.current?.focus(), 0);
-      if (activeChatId) window.location.hash = "highlight-" + activeChatId;
+    } else if (view === "chat") {
+      setTimeout(() => inputRef.current?.focus(), 0);
+      // We no longer automatically set the hash here, this is now driven by user clicks.
     } else {
+      // When returning to the list, clear any pending highlight and reset the hash.
+      setPendingHighlight(null);
       history.replaceState(
         null,
         "",
         window.location.pathname + window.location.search,
       );
     }
-  }, [view, activeChatId]);
+  }, [view, activeChatId, setPendingHighlight, pendingHighlight]);
 
   const handleNewChat = () => {
     const newChatId = crypto.randomUUID();
     setChats((prev) => ({ ...prev, [newChatId]: [] }));
     setActiveChatId(newChatId);
     setView("chat");
+    setPendingHighlight(null); // Ensure no highlight is attached to a new general chat
   };
 
+  // NEW: Function to render the hyperlink for a message if it has a highlightId
+  const renderHighlightLink = (highlightId: string) => (
+    <a
+      href={`#highlight-${highlightId}`}
+      onClick={(e) => {
+        e.preventDefault(); // Prevent full page reload
+        window.location.hash = `highlight-${highlightId}`;
+      }}
+      className="text-blue-600 hover:underline text-xs block mt-2"
+    >
+      View Highlight
+    </a>
+  );
+
   const handleSend = async () => {
-    if (!activeChatId || !prompt.trim() || !token || !selectedPdfId) return;
+    if (
+      !activeChatId ||
+      (!prompt.trim() && !pendingHighlight) ||
+      !token ||
+      !selectedPdfId
+    )
+      return;
 
     const currentPrompt = prompt;
     setPrompt("");
 
-    const highlight = filtered_highlights.find((h) => h.id === activeChatId);
-    const actual_highlight = highlights.find((h) => h.id === activeChatId);
+    // Use the pending highlight if it exists, otherwise find from activeChatId
+    const contextHighlight = pendingHighlight;
+    const actual_highlight = pendingHighlight;
+    setPendingHighlight(null);
 
-    const isGeneralChat = !highlight;
-    const isNewChat = (chats[activeChatId]?.length || 0) < 1;
+    console.log("actual_highlight", actual_highlight);
+    console.log("contextHighlight", contextHighlight);
 
-    if (isNewChat && !isGeneralChat && actual_highlight) {
-      const saveHighlightAndCreateChat = async () => {
-        try {
-          console.log("idiot", actual_highlight);
-          const { id: value, ...rest } = actual_highlight;
-          await axios.post(
-            `${API_URL}/pdfs/${selectedPdfId}/highlights`,
-            { highlight_id_str: value, ...rest },
-          );
-        } catch (error) {
-          console.error("Failed to save highlight:", error);
-        }
-      };
-      saveHighlightAndCreateChat();
-    }
-
-    const endpoint = isNewChat ? "/branch-chat/" : "/continue-chat/";
+    // CHANGED: The user message now includes the highlightId if available
+    const userMessage: ChatMessage = {
+      role: "user",
+      parts: [currentPrompt],
+      // Attach the highlight ID to the message for future reference
+      highlightId: contextHighlight?.id,
+    };
 
     setChats((prev) => ({
       ...prev,
       [activeChatId]: [
         ...(prev[activeChatId] || []),
-        { role: "user", parts: [currentPrompt] },
+        userMessage,
         { role: "model", parts: [""] },
       ],
     }));
 
+    if (actual_highlight && actual_highlight.id) {
+      try {
+        const { id: value, ...rest } = actual_highlight;
+        await axios.post(`${API_URL}/pdfs/${selectedPdfId}/highlights`, {
+          highlight_id_str: value,
+          ...rest,
+        });
+      } catch (error) {
+        console.error("Failed to save highlight:", error);
+      }
+    }
+
+    // After using the pending highlight, clear it.
+    if (pendingHighlight) {
+      setPendingHighlight(null);
+    }
+
     try {
-      const res = await fetch(API_URL + endpoint, {
+      const sening_obj = actual_highlight
+        ? cleanUpObject(actual_highlight)
+        : null;
+      console.log(
+        "sending",
+        JSON.stringify({
+          pdf_id: selectedPdfId,
+          id: activeChatId,
+          prompt: currentPrompt,
+          // NEW: Send highlight ID to the backend
+          highlight_id: contextHighlight?.id,
+          // Provide context details only if a highlight is associated with this message
+          type: sening_obj ? sening_obj.type : "text",
+          content: sening_obj
+            ? sening_obj.context
+            : "just use the entire document as context",
+        }),
+      );
+      const res = await fetch(API_URL + "/branched-chat/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -162,8 +238,13 @@ export function Sidebar() {
           pdf_id: selectedPdfId,
           id: activeChatId,
           prompt: currentPrompt,
-          type: highlight ? highlight.type : "text",
-          content: highlight ? highlight.context : "just use the entire document as context",
+          // NEW: Send highlight ID to the backend
+          highlight_id: contextHighlight?.id,
+          // Provide context details only if a highlight is associated with this message
+          type: sening_obj ? sening_obj.type : "text",
+          content: sening_obj
+            ? sening_obj.context
+            : "just use the entire document as context",
         }),
       });
 
@@ -196,7 +277,7 @@ export function Sidebar() {
         if (currentChat.length === 0) return prev;
         const updatedLastMessage = {
           ...currentChat[currentChat.length - 1],
-          parts: [`Sorry, an error occurred. Please try again.`],
+          parts: ["Sorry, an error occurred. Please try again."],
         };
         return {
           ...prev,
@@ -207,12 +288,10 @@ export function Sidebar() {
   };
 
   return (
-    // NEW: Removed `overflow-auto` and added `overflow-hidden` to prevent the outer scrollbar
     <div className="w-full h-full flex flex-col overflow-hidden text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
       <style>{latexOverflowFix}</style>
 
       {view === "list" && (
-        // NEW: This container now handles its own scrolling if the chat list is long
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex justify-between items-center p-4">
             <h2 className="text-xl font-semibold">Chats</h2>
@@ -225,7 +304,9 @@ export function Sidebar() {
           <div className="px-4 overflow-y-auto">
             {Object.keys(chats).length > 0 ? (
               Object.entries(chats).map(([id, history]) => {
-                const isHighlightChat = filtered_highlights.some(h => h.id === id);
+                const isHighlightChat = filtered_highlights.some(
+                  (h) => h.id === id,
+                );
                 const firstUserMessage = history.find((m) => m.role === "user");
                 const title =
                   firstUserMessage?.parts[0] ||
@@ -241,7 +322,7 @@ export function Sidebar() {
                       setView("chat");
                     }}
                   >
-                    {title.slice(0, 40)}...
+                    {title.length < 80 ? title : `${title.slice(0, 80)}...`}
                   </div>
                 );
               })
@@ -256,10 +337,7 @@ export function Sidebar() {
       )}
 
       {view === "chat" && activeChatId && (
-        // NEW: This container uses `flex-1` and `min-h-0` to correctly size itself
-        // within the main flex layout, which fixes the scrollbar issue.
         <div className="flex flex-col flex-1 min-h-0">
-          {/* NEW: Header now includes the Plus icon */}
           <div className="flex items-center justify-between gap-2 p-2 border-b bg-white">
             <div className="flex items-center gap-2">
               <ArrowLeft
@@ -278,9 +356,7 @@ export function Sidebar() {
             {(chats[activeChatId] || []).map((msg, idx) => (
               <div
                 key={idx}
-                className={`p-3 rounded-lg max-w-[85%] whitespace-pre-wrap prose prose-sm break-words ${
-                  msg.role === "user" ? "bg-blue-100 ml-auto" : "bg-gray-200"
-                }`}
+                className={`p-3 rounded-lg max-w-[85%] whitespace-pre-wrap prose prose-sm break-words ${msg.role === "user" ? "bg-blue-100 ml-auto" : "bg-gray-200"}`}
               >
                 {msg.parts.map((part, i) => (
                   <ReactMarkdown
@@ -292,28 +368,53 @@ export function Sidebar() {
                     {part}
                   </ReactMarkdown>
                 ))}
+                {/* NEW: Render the hyperlink if the message is linked to a highlight */}
+                {msg.role === "user" &&
+                  msg.highlightId &&
+                  renderHighlightLink(msg.highlightId)}
               </div>
             ))}
             <div ref={messagesEndRef} />
           </div>
-          <div className="border-t flex items-center gap-2 p-2 bg-white">
-            <input
-              ref={inputRef}
-              className="flex-1 px-3 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder="Type a message..."
-            />
-            <SendHorizonal
-              className="text-accent cursor-pointer hover:text-accent/80"
-              onClick={handleSend}
-            />
+          <div className="border-t p-2 bg-white">
+            {/* NEW: UI element to show that a highlight's context is attached */}
+            {pendingHighlight && (
+              <div className="flex items-center justify-between bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1.5 mb-2 rounded-md">
+                <span>
+                  <Paperclip className="inline-block h-4 w-4 mr-2" />
+                  Context from highlight attached.
+                </span>
+                <button
+                  onClick={() => {
+                    setHighlights(
+                      highlights.filter((h) => h.id !== pendingHighlight?.id),
+                    );
+                    setPendingHighlight(null);
+                  }}
+                  className="text-blue-800 hover:text-blue-900"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <input
+                ref={inputRef}
+                className="flex-1 px-3 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                placeholder="Type a message..."
+              />
+              <SendHorizonal
+                className="text-accent cursor-pointer hover:text-accent/80"
+                onClick={handleSend}
+              />
+            </div>
           </div>
         </div>
       )}
 
-      {/* NEW: `mt-auto` ensures this button is pushed to the very bottom */}
       <div className="p-4 mt-auto border-t">
         <button
           type="button"
