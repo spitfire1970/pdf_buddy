@@ -7,6 +7,7 @@ import "katex/dist/katex.min.css";
 import { usePdf } from "../contexts/PdfContext";
 import { useAuth } from "../contexts/AuthContext";
 import axios from "axios";
+import { Loader2 } from "lucide-react"; // for loading animation
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -60,6 +61,7 @@ export function Sidebar() {
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [isStreaming, setIsStreaming] = useState(false); // NEW
 
   const filtered_highlights = useMemo(
     () => highlights.map(cleanUpObject),
@@ -144,7 +146,7 @@ export function Sidebar() {
   );
 
   const handleSend = async () => {
-    if (!prompt.trim()) return; // design decision whether to allow sending pure context without prompt
+    if (!prompt.trim() || isStreaming) return; // design decision whether to allow sending pure context without prompt
     if (
       !activeChatId ||
       (!prompt.trim() && !pendingHighlight) ||
@@ -155,6 +157,7 @@ export function Sidebar() {
 
     const currentPrompt = prompt;
     setPrompt("");
+    setIsStreaming(true);
 
     const actual_highlight = pendingHighlight;
 
@@ -164,13 +167,12 @@ export function Sidebar() {
       highlightId: actual_highlight?.id,
     };
 
-    // attach temporary empty bubble
     setChats((prev) => ({
       ...prev,
       [activeChatId]: [
         ...(prev[activeChatId] || []),
         userMessage,
-        { role: "model", parts: [""] },
+        { role: "model", parts: ["...thinking"] },
       ],
     }));
 
@@ -189,7 +191,7 @@ export function Sidebar() {
     setPendingHighlight(null);
 
     try {
-      const sening_obj = actual_highlight
+      const sending_obj = actual_highlight
         ? cleanUpObject(actual_highlight)
         : null;
 
@@ -204,9 +206,9 @@ export function Sidebar() {
           id: activeChatId,
           prompt: currentPrompt,
           highlight_id: actual_highlight?.id,
-          type: sening_obj ? sening_obj.type : "text",
-          content: sening_obj
-            ? sening_obj.context
+          type: sending_obj ? sending_obj.type : "text",
+          content: sending_obj
+            ? sending_obj.context
             : "just use the entire document as context",
         }),
       });
@@ -216,16 +218,20 @@ export function Sidebar() {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      let completeText = "";
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
+        completeText += chunk;
+
         setChats((prev) => {
           const currentChat = prev[activeChatId] || [];
           if (currentChat.length === 0) return prev;
           const updatedLastMessage = {
             ...currentChat[currentChat.length - 1],
-            parts: [currentChat[currentChat.length - 1].parts[0] + chunk],
+            parts: [completeText],
           };
           return {
             ...prev,
@@ -247,6 +253,8 @@ export function Sidebar() {
           [activeChatId]: [...currentChat.slice(0, -1), updatedLastMessage],
         };
       });
+    } finally {
+      setIsStreaming(false);
     }
   };
 
@@ -295,7 +303,7 @@ export function Sidebar() {
                 icon for a general chat.<br></br>
                 <br></br>
                 At any point, add specific context to your chat by holding ⌥/alt
-                and pressing enter!
+                and selecting an area!
               </p>
             )}
           </div>
@@ -322,7 +330,7 @@ export function Sidebar() {
             {(chats[activeChatId] || []).length === 0 ? (
               <p className="text-gray-500 italic px-2">
                 At any point, add specific context to your chat by holding ⌥/alt
-                and pressing enter!
+                and selecting an area!
               </p>
             ) : (
               (chats[activeChatId] || []).map((msg, idx) => (
@@ -337,7 +345,7 @@ export function Sidebar() {
                       rehypePlugins={[rehypeKatex]}
                       components={{ p: "span" }}
                     >
-                      {part}
+                      {part === "...thinking" && isStreaming ? "..." : part}
                     </ReactMarkdown>
                   ))}
                   {msg.role === "user" &&
@@ -349,10 +357,15 @@ export function Sidebar() {
                 </div>
               ))
             )}
+            {isStreaming && (
+              <div className="p-3 rounded-lg bg-gray-200 inline-flex items-center gap-2">
+                <Loader2 className="animate-spin w-4 h-4 text-gray-600" />
+                <span className="text-sm text-gray-600 italic">Thinking…</span>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
           <div className="border-t p-2 bg-white">
-            {/* NEW: UI element to show that a highlight's context is attached */}
             {pendingHighlight && (
               <div className="flex items-center justify-between bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1.5 mb-2 rounded-md">
                 <div className="flex justify-center items-center">
@@ -383,21 +396,27 @@ export function Sidebar() {
                 value={prompt}
                 onChange={(e) => {
                   setPrompt(e.target.value);
-                  e.target.style.height = "auto"; // Reset height
-                  e.target.style.height = `${e.target.scrollHeight}px`; // Set to scroll height
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${e.target.scrollHeight}px`;
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !incomplete) {
-                    console.log("status of incomplete", incomplete);
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !incomplete &&
+                    !isStreaming
+                  ) {
                     e.preventDefault();
                     handleSend();
                   }
                 }}
-                placeholder="Type a message... (Shift+Enter for newline)"
+                placeholder="Ask anything about the document"
               />
               <SendHorizonal
-                className="text-accent cursor-pointer hover:text-accent/80 ml-2"
-                onClick={handleSend}
+                className={`text-accent cursor-pointer ml-2 ${isStreaming ? "opacity-50 cursor-not-allowed" : "hover:text-accent/80"}`}
+                onClick={() => {
+                  if (!isStreaming) handleSend();
+                }}
               />
             </div>
           </div>
