@@ -89,7 +89,8 @@ export function Sidebar() {
   useEffect(() => {
     // Only trigger a new chat if a highlight was just made (`incomplete`)
     // AND we are in the "list" view.
-    if (incomplete && view === "list" && pendingHighlight) {
+    if (view === "list" && pendingHighlight) {
+      console.log("entering here", pendingHighlight.id);
       const newChatId = pendingHighlight.id;
       if (!chats[newChatId]) {
         setActiveChatId(newChatId);
@@ -97,19 +98,8 @@ export function Sidebar() {
         setChats((prev) => ({ ...prev, [newChatId]: [] }));
       }
       setIncomplete(false);
-    } else if (incomplete) {
-      // If we are in "chat" view, we don't start a new chat. We just acknowledge
-      // the action is done and wait for the user to send a prompt.
-      setIncomplete(false);
     }
-  }, [
-    incomplete,
-    view,
-    pendingHighlight,
-    chats,
-    setIncomplete,
-    setPendingHighlight,
-  ]);
+  }, [pendingHighlight, chats, setIncomplete, setPendingHighlight]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -124,13 +114,14 @@ export function Sidebar() {
     } else {
       // When returning to the list, clear any pending highlight and reset the hash.
       setPendingHighlight(null);
+      setIncomplete(false);
       history.replaceState(
         null,
         "",
         window.location.pathname + window.location.search,
       );
     }
-  }, [view, activeChatId, setPendingHighlight, pendingHighlight]);
+  }, [view, setPendingHighlight, pendingHighlight]);
 
   const handleNewChat = () => {
     const newChatId = crypto.randomUUID();
@@ -141,7 +132,7 @@ export function Sidebar() {
   };
 
   // NEW: Function to render the hyperlink for a message if it has a highlightId
-  const renderHighlightLink = (highlightId: string) => (
+  const renderHighlightLink = (highlightId: string, statement: string) => (
     <a
       href={`#highlight-${highlightId}`}
       onClick={(e) => {
@@ -150,7 +141,7 @@ export function Sidebar() {
       }}
       className="text-blue-600 hover:underline text-xs block mt-2"
     >
-      View Attached Context
+      {statement}
     </a>
   );
 
@@ -167,16 +158,13 @@ export function Sidebar() {
     const currentPrompt = prompt;
     setPrompt("");
 
-    // Use the pending highlight if it exists, otherwise find from activeChatId
-    const contextHighlight = pendingHighlight;
     const actual_highlight = pendingHighlight;
-    setPendingHighlight(null);
 
     const userMessage: ChatMessage = {
       role: "user",
       parts: [currentPrompt],
       // Attach the highlight ID to the message for future reference
-      highlightId: contextHighlight?.id,
+      highlightId: actual_highlight?.id,
     };
 
     setChats((prev) => ({
@@ -200,10 +188,7 @@ export function Sidebar() {
       }
     }
 
-    // After using the pending highlight, clear it.
-    if (pendingHighlight) {
-      setPendingHighlight(null);
-    }
+    setPendingHighlight(null);
 
     try {
       const sening_obj = actual_highlight
@@ -221,7 +206,7 @@ export function Sidebar() {
           id: activeChatId,
           prompt: currentPrompt,
           // NEW: Send highlight ID to the backend
-          highlight_id: contextHighlight?.id,
+          highlight_id: actual_highlight?.id,
           // Provide context details only if a highlight is associated with this message
           type: sening_obj ? sening_obj.type : "text",
           content: sening_obj
@@ -329,7 +314,7 @@ export function Sidebar() {
                 className="cursor-pointer"
                 onClick={() => setView("list")}
               />
-              <h3 className="text-lg font-medium">Chat</h3>
+              <h3 className="text-lg font-medium">All Chats</h3>
             </div>
             <Plus
               className="cursor-pointer text-neutral-500 hover:text-neutral-800 mr-2"
@@ -361,7 +346,10 @@ export function Sidebar() {
                   ))}
                   {msg.role === "user" &&
                     msg.highlightId &&
-                    renderHighlightLink(msg.highlightId)}
+                    renderHighlightLink(
+                      msg.highlightId,
+                      "View Attached Context",
+                    )}
                 </div>
               ))
             )}
@@ -371,10 +359,13 @@ export function Sidebar() {
             {/* NEW: UI element to show that a highlight's context is attached */}
             {pendingHighlight && (
               <div className="flex items-center justify-between bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1.5 mb-2 rounded-md">
-                <span>
+                <div className="flex justify-center items-center">
                   <Paperclip className="inline-block h-4 w-4 mr-2" />
-                  Context from highlight attached.
-                </span>
+                  {renderHighlightLink(
+                    pendingHighlight.id,
+                    "Context from highlight attached.",
+                  )}
+                </div>
                 <button
                   onClick={() => {
                     setHighlights(
@@ -401,6 +392,7 @@ export function Sidebar() {
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && !incomplete) {
+                    console.log("status of incomplete", incomplete);
                     e.preventDefault();
                     handleSend();
                   }

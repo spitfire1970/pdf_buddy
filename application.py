@@ -40,6 +40,7 @@ MONTHLY_PRICE_ID = os.getenv("STRIPE_MONTHLY_PRICE_ID")
 YEARLY_PRICE_ID = os.getenv("STRIPE_YEARLY_PRICE_ID")
 DOMAIN = os.getenv("DOMAIN")
 
+FREE_UPLOADS = 5
 
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set.")
@@ -219,7 +220,7 @@ async def auth_google(google_token: GoogleToken, db: Session = Depends(get_sessi
 async def upload_pdf(current_user: User = Depends(get_current_user), file: UploadFile = File(...), db: Session = Depends(get_session)):
     # --- Check subscription status before allowing upload ---
     pdf_count = len(current_user.pdfs)
-    if current_user.subscription_tier == "free" and pdf_count >= 0:
+    if current_user.subscription_tier == "free" and pdf_count >= FREE_UPLOADS:
         raise HTTPException(
             status_code=402, # Payment Required
             detail="Upgrade to a paid plan to upload more than one PDF."

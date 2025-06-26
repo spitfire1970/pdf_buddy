@@ -181,38 +181,41 @@ export function App() {
               scrollRef={(scrollTo) => {
                 scrollViewerTo.current = scrollTo;
               }}
-              onSelectionFinished={(position, content, hideTipAndSelection) => (
-                <AskInChatPopup
-                  onConfirm={() => {
-                    // CHANGED: The logic for handling a new highlight is updated.
-                    const newHighlightData = {
-                      content,
-                      position,
-                      comment: { emoji: "💬", text: "" },
-                    };
-                    if (pendingHighlight) {
-                      setHighlights(
-                        highlights.filter((h) => h.id !== pendingHighlight?.id),
-                      );
-                    }
-                    // We add the highlight to the main list and get its new ID back.
-                    addHighlight(newHighlightData, (newId) => {
-                      const newHighlightWithId = {
-                        ...newHighlightData,
-                        id: newId,
+              onSelectionFinished={(position, content, hideTipAndSelection) => {
+                setIncomplete(true);
+                return (
+                  <AskInChatPopup
+                    onConfirm={() => {
+                      const newHighlightData = {
+                        content,
+                        position,
+                        comment: { emoji: "", text: "" },
                       };
-                      // We set it as the pending highlight for the chat sidebar to use.
-                      setPendingHighlight(newHighlightWithId);
-                      // We also set `incomplete` to true. The sidebar will decide what to do
-                      // based on its current view (list or chat).
-                      setIncomplete(true);
-                    });
+                      // in case user was in the process of using some other highlight
+                      if (pendingHighlight) {
+                        setHighlights(
+                          highlights.filter(
+                            (h) => h.id !== pendingHighlight?.id,
+                          ),
+                        );
+                      }
+                      // We add the highlight to the main list and get its new ID back.
+                      addHighlight(newHighlightData, (newId) => {
+                        const newHighlightWithId = {
+                          ...newHighlightData,
+                          id: newId,
+                        };
+                        // We set it as the pending highlight for the chat sidebar to use.
+                        setPendingHighlight(newHighlightWithId);
+                        setIncomplete(false);
+                      });
 
-                    hideTipAndSelection();
-                  }}
-                  onCancel={hideTipAndSelection}
-                />
-              )}
+                      hideTipAndSelection();
+                    }}
+                    onCancel={hideTipAndSelection}
+                  />
+                );
+              }}
               highlightTransform={(highlight, index, setTip, hideTip) => {
                 const isScrolledTo = highlight.id === urlHash;
                 const isTextHighlight = !highlight.content?.image;

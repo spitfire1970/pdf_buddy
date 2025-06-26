@@ -95,7 +95,6 @@ export function PdfProvider({ children }: { children: ReactNode }) {
   const selectPdf = useCallback((id: string | null) => {
     setSelectedPdfId(id);
     setHighlights([]);
-    setPendingHighlight(null); // NEW: Clear pending highlight on PDF change
   }, []);
 
   // CHANGED: addHighlight can now accept a callback to get the new highlight's ID
