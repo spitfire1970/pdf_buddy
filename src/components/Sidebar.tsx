@@ -85,9 +85,9 @@ export function Sidebar() {
     fetchChats();
   }, [selectedPdfId, token]);
 
-  // CHANGED: This effect now conditionally starts a new chat.
+  // conditionally starts a new chat.
   useEffect(() => {
-    // Only trigger a new chat if a highlight was just made (`incomplete`)
+    // only trigger a new chat if a highlight was just made (pendingHighlight)
     // AND we are in the "list" view.
     if (view === "list" && pendingHighlight) {
       console.log("entering here", pendingHighlight.id);
@@ -110,9 +110,8 @@ export function Sidebar() {
       setTimeout(() => inputRef.current?.focus(), 0);
     } else if (view === "chat") {
       setTimeout(() => inputRef.current?.focus(), 0);
-      // We no longer automatically set the hash here, this is now driven by user clicks.
     } else {
-      // When returning to the list, clear any pending highlight and reset the hash.
+      // when returning to the list, clear any pending highlight and reset the hash.
       setPendingHighlight(null);
       setIncomplete(false);
       history.replaceState(
@@ -128,10 +127,9 @@ export function Sidebar() {
     setChats((prev) => ({ ...prev, [newChatId]: [] }));
     setActiveChatId(newChatId);
     setView("chat");
-    setPendingHighlight(null); // Ensure no highlight is attached to a new general chat
+    setPendingHighlight(null);
   };
 
-  // NEW: Function to render the hyperlink for a message if it has a highlightId
   const renderHighlightLink = (highlightId: string, statement: string) => (
     <a
       href={`#highlight-${highlightId}`}
@@ -146,7 +144,7 @@ export function Sidebar() {
   );
 
   const handleSend = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim()) return; // design decision whether to allow sending pure context without prompt
     if (
       !activeChatId ||
       (!prompt.trim() && !pendingHighlight) ||
@@ -163,10 +161,10 @@ export function Sidebar() {
     const userMessage: ChatMessage = {
       role: "user",
       parts: [currentPrompt],
-      // Attach the highlight ID to the message for future reference
       highlightId: actual_highlight?.id,
     };
 
+    // attach temporary empty bubble
     setChats((prev) => ({
       ...prev,
       [activeChatId]: [
@@ -205,9 +203,7 @@ export function Sidebar() {
           pdf_id: selectedPdfId,
           id: activeChatId,
           prompt: currentPrompt,
-          // NEW: Send highlight ID to the backend
           highlight_id: actual_highlight?.id,
-          // Provide context details only if a highlight is associated with this message
           type: sening_obj ? sening_obj.type : "text",
           content: sening_obj
             ? sening_obj.context
