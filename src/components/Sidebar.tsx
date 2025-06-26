@@ -59,7 +59,7 @@ export function Sidebar() {
   const [prompt, setPrompt] = useState<string>("");
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const filtered_highlights = useMemo(
     () => highlights.map(cleanUpObject),
@@ -313,8 +313,8 @@ export function Sidebar() {
                 Highlight a section of the PDF to start a chat, or press the '+'
                 icon for a general chat.<br></br>
                 <br></br>
-                At any point, add specific context to your chat by holding
-                ⌥/alt and pressing enter!
+                At any point, add specific context to your chat by holding ⌥/alt
+                and pressing enter!
               </p>
             )}
           </div>
@@ -340,8 +340,8 @@ export function Sidebar() {
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
             {(chats[activeChatId] || []).length === 0 ? (
               <p className="text-gray-500 italic px-2">
-                At any point, add specific context to your chat by holding
-                ⌥/alt and pressing enter!
+                At any point, add specific context to your chat by holding ⌥/alt
+                and pressing enter!
               </p>
             ) : (
               (chats[activeChatId] || []).map((msg, idx) => (
@@ -389,16 +389,26 @@ export function Sidebar() {
               </div>
             )}
             <div className="flex items-center gap-2">
-              <input
+              <textarea
                 ref={inputRef}
-                className="flex-1 px-3 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="scrollbar scrollbar-thumb-red-500 scrollbar-track-accent flex-1 resize-none max-h-48 overflow-y-auto px-3 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-1 focus:ring-gray"
+                rows={1}
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                placeholder="Type a message..."
+                onChange={(e) => {
+                  setPrompt(e.target.value);
+                  e.target.style.height = "auto"; // Reset height
+                  e.target.style.height = `${e.target.scrollHeight}px`; // Set to scroll height
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !incomplete) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="Type a message... (Shift+Enter for newline)"
               />
               <SendHorizonal
-                className="text-accent cursor-pointer hover:text-accent/80"
+                className="text-accent cursor-pointer hover:text-accent/80 ml-2"
                 onClick={handleSend}
               />
             </div>

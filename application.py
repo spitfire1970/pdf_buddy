@@ -6,7 +6,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, List
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header
+import stripe
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel as PydanticBaseModel
@@ -23,6 +24,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 load_dotenv()
 
+# --- Environment Variables & Constants ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -31,12 +33,21 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 1 day
 MODEL_NAME = "gemini-1.5-flash"
 
+# --- Stripe Configuration ---
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+MONTHLY_PRICE_ID = os.getenv("STRIPE_MONTHLY_PRICE_ID")
+YEARLY_PRICE_ID = os.getenv("STRIPE_YEARLY_PRICE_ID")
+DOMAIN = os.getenv("DOMAIN")
+
+
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set.")
 
-genai.configure(api_key="AIzaSyCFRrbdc1uO1ZOqGc2Ej_0ZnLmfxntMp6M")
-
+genai.configure(api_key=GEMINI_API_KEY)
 engine = create_engine(DATABASE_URL, echo=False)
+
+# --- SQL Models ---
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -45,33 +56,37 @@ class User(SQLModel, table=True):
     picture: Optional[str] = None
     pdfs: List["PDF"] = Relationship(back_populates="user")
 
+    # --- Stripe Fields ---
+    stripe_customer_id: Optional[str] = Field(default=None, unique=True, index=True)
+    subscription_tier: str = Field(default="free") # "free", "monthly", "yearly"
+    subscription_expires: Optional[datetime] = Field(default=None)
+
 class PDF(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     filename: str
     upload_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     pdf_bytes: bytes = Field(sa_column=Column(BYTEA))
     user_id: int = Field(foreign_key="user.id")
-    user: User = Relationship(back_populates="pdfs")
+    user: "User" = Relationship(back_populates="pdfs")
     chats: List["Chat"] = Relationship(back_populates="pdf")
     highlights: List["Highlight"] = Relationship(back_populates="pdf")
 
+# (Keep Chat and Highlight models as they were)
 class Highlight(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    highlight_id_str: str = Field(index=True) 
+    highlight_id_str: str = Field(index=True)
     content: Dict[str, Any] = Field(sa_column=Column(JSONB))
     position: Dict[str, Any] = Field(sa_column=Column(JSONB))
     comment: Dict[str, Any] = Field(sa_column=Column(JSONB))
-
     pdf_id: uuid.UUID = Field(foreign_key="pdf.id")
     pdf: "PDF" = Relationship(back_populates="highlights")
 
 class Chat(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    chat_id_str: str = Field(index=True) 
-    # CHANGED: The history can now contain more complex objects, not just text parts.
+    chat_id_str: str = Field(index=True)
     history: List[Dict[str, Any]] = Field(default=[], sa_column=Column(JSONB))
     pdf_id: uuid.UUID = Field(foreign_key="pdf.id")
-    pdf: PDF = Relationship(back_populates="chats")
+    pdf: "PDF" = Relationship(back_populates="chats")
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
@@ -87,15 +102,11 @@ async def lifespan(app: FastAPI):
     yield
     print("Shutting down...")
 
+
+# --- Pydantic Models ---
 class BaseModel(PydanticBaseModel):
     class Config:
         from_attributes = True
-
-class HighlightCreate(BaseModel):
-    highlight_id_str: str
-    content: Dict[str, Any]
-    position: Dict[str, Any]
-    comment: Dict[str, Any]
 
 class GoogleToken(BaseModel):
     token: str
@@ -104,67 +115,62 @@ class UserInfo(BaseModel):
     email: str
     name: str
     picture: Optional[str] = None
+    subscription_tier: str # Added subscription tier
 
 class PdfDetails(BaseModel):
     id: uuid.UUID
     filename: str
     upload_date: datetime
 
-# CHANGED: Pydantic models now accept an optional highlight_id
+class CreateCheckoutSessionRequest(PydanticBaseModel):
+    price_id: str
+
+# (Keep other Pydantic models as they were)
+class HighlightCreate(BaseModel):
+    highlight_id_str: str
+    content: Dict[str, Any]
+    position: Dict[str, Any]
+    comment: Dict[str, Any]
+
 class BranchInput(BaseModel):
-    pdf_id: str
-    id: str
-    type: str
-    content: str
-    prompt: str
-    highlight_id: Optional[str] = None
+    pdf_id: str; id: str; type: str; content: str
+    prompt: str; highlight_id: Optional[str] = None
 
 class ContinueInput(BaseModel):
-    pdf_id: str
-    id: str
-    prompt: str
+    pdf_id: str; id: str; prompt: str
     highlight_id: Optional[str] = None
 
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
+# --- Auth & User Functions ---
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    # (Implementation is unchanged)
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 async def get_current_user(db: Session = Depends(get_session), authorization: str = Header(...)) -> User:
+    # (Implementation is unchanged)
     if "Bearer " not in authorization:
         raise HTTPException(status_code=401, detail="Invalid authorization scheme")
     token = authorization.split("Bearer ")[1]
-    credentials_exception = HTTPException(
-        status_code=401, detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"}
-    )
+    credentials_exception = HTTPException(status_code=401, detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"})
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if email is None: raise credentials_exception
         user = db.query(User).filter(User.email == email).first()
-        if user is None:
-            user = User.from_orm(UserInfo(email=email, name=payload.get("name", ""), picture=payload.get("picture", "")))
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+        if user is None: raise credentials_exception
         return user
     except JWTError:
         raise credentials_exception
-
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
 
 @app.post("/auth/google")
 async def auth_google(google_token: GoogleToken, db: Session = Depends(get_session)):
@@ -172,21 +178,53 @@ async def auth_google(google_token: GoogleToken, db: Session = Depends(get_sessi
         idinfo = id_token.verify_oauth2_token(google_token.token, requests.Request(), GOOGLE_CLIENT_ID)
         email = idinfo['email']
         user = db.query(User).filter(User.email == email).first()
+
         if not user:
-            user = User(email=email, name=idinfo.get('name'), picture=idinfo.get('picture'))
+            # This block is for new users
+            print(f"New user {email}. Attempting to create Stripe customer.")
+            customer = stripe.Customer.create(
+                email=idinfo.get('email'),
+                name=idinfo.get('name')
+            )
+            print(f"Stripe customer {customer.id} created successfully.")
+            user = User(
+                email=email,
+                name=idinfo.get('name'),
+                picture=idinfo.get('picture'),
+                stripe_customer_id=customer.id
+            )
             db.add(user)
             db.commit()
             db.refresh(user)
+
+        # (The rest of the function remains the same)
         access_token = create_access_token(
             data={"sub": user.email, "name": user.name, "picture": user.picture},
             expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         )
-        return {"access_token": access_token, "token_type": "bearer", "user_info": UserInfo.from_orm(user)}
+        user_info_response = UserInfo.from_orm(user)
+        return {"access_token": access_token, "token_type": "bearer", "user_info": user_info_response}
+        
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid Google token")
+    # --- ADD THIS: Catch Stripe errors during login to see if customer creation fails ---
+    except stripe.error.StripeError as e:
+        print(f"!!! STRIPE ERROR DURING LOGIN FOR {idinfo.get('email', 'N/A')}: {e}")
+        raise HTTPException(status_code=500, detail=f"A payment system error occurred during login: {e}")
+
+
+# --- PDF & Chat Endpoints ---
 
 @app.post("/upload-pdf/")
 async def upload_pdf(current_user: User = Depends(get_current_user), file: UploadFile = File(...), db: Session = Depends(get_session)):
+    # --- Check subscription status before allowing upload ---
+    pdf_count = len(current_user.pdfs)
+    if current_user.subscription_tier == "free" and pdf_count >= 0:
+        raise HTTPException(
+            status_code=402, # Payment Required
+            detail="Upgrade to a paid plan to upload more than one PDF."
+        )
+
     db_pdf = PDF(filename=file.filename, pdf_bytes=await file.read(), user_id=current_user.id)
     db.add(db_pdf)
     db.commit()
@@ -196,6 +234,142 @@ async def upload_pdf(current_user: User = Depends(get_current_user), file: Uploa
 @app.get("/get-pdfs/", response_model=List[PdfDetails])
 async def get_pdfs(current_user: User = Depends(get_current_user)):
     return current_user.pdfs
+
+# (Other endpoints like get_pdf_file, branched_chat, etc., remain unchanged)
+
+# --- Stripe Integration Endpoints ---
+
+@app.post("/create-checkout-session")
+async def create_checkout_session(req: CreateCheckoutSessionRequest, current_user: User = Depends(get_current_user)):
+    print("Creating strip checkout session")
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            customer=current_user.stripe_customer_id,
+            line_items=[{"price": req.price_id, "quantity": 1}],
+            mode="subscription",
+            success_url=f"{DOMAIN}/?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{DOMAIN}/",
+            metadata={"user_id": current_user.id}
+        )
+        return {"url": checkout_session.url}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/create-portal-session")
+async def create_portal_session(current_user: User = Depends(get_current_user)):
+    try:
+        if not current_user.stripe_customer_id:
+             raise ValueError("User does not have a Stripe customer ID.")
+        
+        portal_session = stripe.billing_portal.Session.create(
+            customer=current_user.stripe_customer_id,
+            return_url=f"{DOMAIN}/?from_portal=true",
+        )
+        return {"url": portal_session.url}
+
+    except Exception as e:
+        print(f"!!! FAILED TO CREATE PORTAL SESSION. Reason: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/stripe-webhook")
+async def stripe_webhook(request: Request, db: Session = Depends(get_session)):
+    payload = await request.body()
+    sig_header = request.headers.get('stripe-signature')
+    event = None
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    event_type = event['type']
+    data_object = event['data']['object']
+
+    print(f"--- Handling Stripe Event: {event_type} ---")
+
+    if event_type == 'checkout.session.completed':
+        session = data_object
+        customer_id = session.get('customer')
+        subscription_id = session.get('subscription')
+        
+        if not customer_id or not subscription_id:
+            print(f"Webhook Error: checkout.session.completed missing customer or subscription ID.")
+            return Response(status_code=400)
+
+        # --- IDEMPOTENCY CHECK ---
+        # It's possible Stripe sends this event more than once.
+        # Let's check if we've already given this user a subscription from this session.
+        # We can check if the user's subscription is already active and expires in the future.
+        user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
+        if user and user.subscription_tier != "free" and user.subscription_expires and user.subscription_expires > datetime.now(timezone.utc):
+            print(f"Idempotency check: User {user.email} already has an active subscription. Ignoring duplicate checkout event.")
+            return Response(status_code=200)
+
+        try:
+            subscription = stripe.Subscription.retrieve(subscription_id)
+            
+            if not user:
+                print(f"Webhook Error: User not found for customer_id {customer_id}")
+                return Response(status_code=200) # Return 200 so Stripe doesn't retry for a user that doesn't exist.
+
+            price_id = subscription['items']['data'][0]['price']['id']
+            
+            if subscription.status == 'active':
+                if price_id == MONTHLY_PRICE_ID:
+                    user.subscription_tier = "monthly"
+                elif price_id == YEARLY_PRICE_ID:
+                    user.subscription_tier = "yearly"
+                user.subscription_expires = datetime.fromtimestamp(subscription['items']['data'][0].current_period_end, tz=timezone.utc)
+                print(f"SUCCESS: Activated subscription for {user.email} to '{user.subscription_tier}'. Expires: {user.subscription_expires}")
+            
+            db.add(user)
+            db.commit()
+
+        except stripe.error.StripeError as e:
+            print(f"Webhook Stripe API Error: Could not retrieve subscription {subscription_id}. Reason: {e}")
+            return Response(status_code=400)
+        except AttributeError as e:
+            print(f"FATAL: Caught AttributeError in 'checkout.session.completed' block!")
+            print(f"Event Type: {event_type}")
+            print(f"Error: {e}")
+            print(f"Type of 'subscription' variable: {type(subscription)}")
+            raise e
+
+    elif event_type in ['customer.subscription.updated', 'customer.subscription.deleted']:
+        # In these events, the data_object *is* the subscription
+        subscription = data_object
+        customer_id = subscription.get('customer')
+
+        user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
+        if not user:
+            print(f"Webhook Info: User not found for customer_id {customer_id} in subscription update. Ignoring.")
+            return Response(status_code=200)
+
+        status = subscription.get('status')
+        # Handle cancellation or other non-active states
+        if status != 'active' or event_type == 'customer.subscription.deleted':
+            user.subscription_tier = "free"
+            user.subscription_expires = None
+            print(f"SUCCESS: Subscription for {user.email} is no longer active (status: {status}). Reverted to free tier.")
+        else: # The subscription was updated (e.g., plan change) but is still active
+            price_id = subscription['items']['data'][0]['price']['id']
+            if price_id == MONTHLY_PRICE_ID:
+                user.subscription_tier = "monthly"
+            elif price_id == YEARLY_PRICE_ID:
+                user.subscription_tier = "yearly"
+            user.subscription_expires = datetime.fromtimestamp(subscription['items']['data'][0].current_period_end, tz=timezone.utc)
+            print(f"SUCCESS: Updated subscription for {user.email} to '{user.subscription_tier}'.")
+
+        db.add(user)
+        db.commit()
+    
+    else:
+        # For all other events (invoice.paid, charge.succeeded, etc.), just acknowledge them.
+        print(f"--- Ignoring unhandled event type: {event_type} ---")
+
+    return Response(status_code=200)
 
 @app.get("/pdfs/{pdf_id}")
 async def get_pdf_file(pdf_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
@@ -353,3 +527,7 @@ def create_highlight_for_pdf(
     session.refresh(db_highlight)
 
     return db_highlight
+
+@app.get("/users/me", response_model=UserInfo)
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user

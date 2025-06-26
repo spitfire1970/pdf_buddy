@@ -1,4 +1,10 @@
-import { createContext, useState, useEffect, useContext } from "react";
+import {
+  createContext,
+  useState,
+  useEffect,
+  useContext,
+  useCallback,
+} from "react";
 import { type ReactNode } from "react";
 import { type CredentialResponse } from "@react-oauth/google";
 import axios from "axios";
@@ -9,6 +15,7 @@ interface User {
   email: string;
   name: string;
   picture: string;
+  subscription_tier: "free" | "monthly" | "yearly";
 }
 
 interface AuthContextType {
@@ -17,6 +24,7 @@ interface AuthContextType {
   login: (credentialResponse: CredentialResponse) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -66,7 +74,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("user");
   };
 
-  const value = { user, token, login, logout, isLoading };
+  const refreshUser = useCallback(async () => {
+    const currentToken = localStorage.getItem("authToken");
+    if (!currentToken) return; // No user to refresh
+
+    console.log("Refreshing user data from server...");
+    try {
+      const { data: updatedUser } = await axios.get(`${API_URL}/users/me`, {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      });
+      setUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      console.log("User data refreshed:", updatedUser);
+    } catch (error) {
+      console.error("Failed to refresh user data: LOGGING USER OUT", error);
+      logout();
+    }
+  }, []);
+
+  const value = { user, token, login, logout, isLoading, refreshUser };
 
   return (
     <AuthContext.Provider value={value}>

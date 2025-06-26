@@ -1,3 +1,6 @@
 @import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @theme {  --color-main: #34ebb1;  --color-accent: #eda540;}
