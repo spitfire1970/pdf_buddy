@@ -40,7 +40,7 @@ MONTHLY_PRICE_ID = os.getenv("STRIPE_MONTHLY_PRICE_ID")
 YEARLY_PRICE_ID = os.getenv("STRIPE_YEARLY_PRICE_ID")
 DOMAIN = os.getenv("DOMAIN")
 
-FREE_UPLOADS = 5
+FREE_UPLOADS = 3
 
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set.")
