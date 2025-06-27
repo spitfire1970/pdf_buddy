@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import {
   ArrowLeft,
   SendHorizonal,
-  Plus,
   Paperclip,
   X,
   ArrowRight,
@@ -16,7 +15,7 @@ import { useAuth } from "../contexts/AuthContext";
 import axios from "axios";
 import { Loader2 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL;
 
 interface IHighlightObject {
   id: string;
@@ -114,6 +113,7 @@ export function Sidebar() {
     } else {
       setPendingHighlight(null);
       setIncomplete(false);
+      setPrompt("");
       history.replaceState(
         null,
         "",
@@ -121,6 +121,37 @@ export function Sidebar() {
       );
     }
   }, [view, setPendingHighlight, pendingHighlight, setIncomplete]);
+
+  const NewChatAndDashboard = () => (
+    <>
+      <button
+        onClick={handleNewChat}
+        className="px-4 text-lg border-1 border-accent-400 font-medium text-accent-50 bg-accent-700 rounded-lg hover:bg-accent-800"
+      >
+        New Chat
+      </button>
+      <div className="flex items-center gap-2">
+        <h3
+          className="text-lg font-medium text-accent-50 cursor-pointer hover:text-accent-100"
+          onClick={() => {
+            selectPdf(null);
+            setIncomplete(false);
+            setPendingHighlight(null);
+          }}
+        >
+          Dashboard
+        </h3>
+        <ArrowRight
+          className="cursor-pointer text-accent-400 hover:text-accent-200"
+          onClick={() => {
+            selectPdf(null);
+            setIncomplete(false);
+            setPendingHighlight(null);
+          }}
+        />
+      </div>
+    </>
+  );
 
   const handleNewChat = () => {
     const newChatId = crypto.randomUUID();
@@ -141,9 +172,12 @@ export function Sidebar() {
         e.preventDefault();
         window.location.hash = `#highlight-${highlightId}`;
       }}
-      className={className}
+      // The <a> tag is now the flex container.
+      // We combine the layout classes with the styling classes passed via the prop.
+      className={`flex items-center ${className}`}
     >
-      {statement}
+      <Paperclip className="h-4 w-4 mr-2 flex-shrink-0" />
+      <span>{statement}</span>
     </a>
   );
 
@@ -270,13 +304,9 @@ export function Sidebar() {
       <style>{latexOverflowFix}</style>
       {view === "list" && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex justify-between items-center p-4 border-b border-neutral-700">
-            <h2 className="text-xl font-semibold text-white">Chats</h2>
-            <Plus
-              className="cursor-pointer text-accent-400 hover:text-accent-200"
-              onClick={handleNewChat}
-              size={28}
-            />
+          <div className="flex justify-between items-center px-4 py-2 border-b border-neutral-700">
+            <h2 className="text-xl font-semibold text-accent-50">Chats</h2>
+            <NewChatAndDashboard />
           </div>
           <div className="px-4 overflow-y-auto">
             {Object.keys(chats).length > 0 ? (
@@ -323,26 +353,14 @@ export function Sidebar() {
                 className="cursor-pointer text-accent-400 hover:text-accent-200"
                 onClick={() => setView("list")}
               />
-              <h3 className="text-lg font-medium text-accent-50">All Chats</h3>
-            </div>
-            <Plus
-              className="cursor-pointer text-accent-400 hover:text-accent-200 mr-2"
-              onClick={handleNewChat}
-              size={28}
-            />
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg font-medium text-accent-50">
-                Back to Dashboard
+              <h3
+                className="text-lg font-medium text-accent-50 cursor-pointer hover:text-accent-100"
+                onClick={() => setView("list")}
+              >
+                All Chats
               </h3>
-              <ArrowRight
-                className="cursor-pointer text-accent-400 hover:text-accent-200"
-                onClick={() => {
-                  selectPdf(null);
-                  setIncomplete(false);
-                  setPendingHighlight(null);
-                }}
-              />
             </div>
+            <NewChatAndDashboard />
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
             {(chats[activeChatId] || []).length === 0 ? (
@@ -366,13 +384,15 @@ export function Sidebar() {
                       {part}
                     </ReactMarkdown>
                   ))}
-                  {msg.role === "user" &&
-                    msg.highlightId &&
-                    renderHighlightLink(
-                      msg.highlightId,
-                      "View Attached Context",
-                      "text-accent-200 hover:underline text-sm block mt-2",
-                    )}
+                  {msg.role === "user" && msg.highlightId && (
+                    <div className="mt-2">
+                      {renderHighlightLink(
+                        msg.highlightId,
+                        "View Attached Context",
+                        "text-accent-200 hover:underline text-sm",
+                      )}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -388,13 +408,12 @@ export function Sidebar() {
           </div>
           <div className="border-t border-neutral-700 p-2 bg-accent-950">
             {pendingHighlight && (
-              <div className="flex items-center justify-between bg-accent-900/50 text-accent-300 text-sm font-semibold px-3 py-1.5 mb-2 rounded-md">
-                <div className="flex justify-center items-center">
-                  <Paperclip className="inline-block h-4 w-4 mr-2" />
+              <div className="flex items-center justify-between bg-accent-900 text-accent-300 text-sm font-semibold px-3 py-1.5 mb-2 rounded-md">
+                <div className="flex items-center">
                   {renderHighlightLink(
                     pendingHighlight.id,
                     "Context from highlight attached",
-                    "text-accent-300 hover:underline text-sm block",
+                    "text-accent-300 hover:underline text-sm",
                   )}
                 </div>
                 <button
@@ -435,7 +454,7 @@ export function Sidebar() {
                 placeholder="Ask anything about the document"
               />
               <SendHorizonal
-                className={`text-accent-400 cursor-pointer ml-2 mr-3 ${isStreaming ? "opacity-50 cursor-not-allowed" : "hover:text-accent-200"}`}
+                className={`text-accent-400 cursor-pointer ml-1 mr-2 ${isStreaming ? "opacity-50 cursor-not-allowed" : "hover:text-accent-200"} ${prompt ? "animate-bounce" : ""}`}
                 onClick={() => {
                   if (!isStreaming) handleSend();
                 }}
@@ -444,21 +463,6 @@ export function Sidebar() {
           </div>
         </div>
       )}
-      {view == "list" &&
-        <div className="p-4 mt-auto border-t border-neutral-700">
-          <button
-            type="button"
-            onClick={() => {
-              selectPdf(null);
-              setIncomplete(false);
-              setPendingHighlight(null);
-            }}
-            className="w-full px-4 py-2 text-white font-semibold bg-accent-600 rounded-lg hover:bg-accent-700"
-          >
-            Back to Dashboard
-          </button>
-        </div>
-      }
     </div>
   );
 }

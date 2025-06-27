@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL;
 const MONTHLY_PRICE_ID = import.meta.env.VITE_STRIPE_MONTHLY_PRICE_ID;
 const YEARLY_PRICE_ID = import.meta.env.VITE_STRIPE_YEARLY_PRICE_ID;
 
@@ -47,9 +47,9 @@ export function UpgradeModal({ onClose, token }: UpgradeModalProps) {
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Monthly Plan */}
-          <div className="bg-gray-700 p-6 rounded-lg border border-gray-600 flex flex-col hover:border-blue-500 transition-all">
+          <div className="bg-gray-700 p-6 rounded-lg border border-gray-600 flex flex-col hover:border-main-500 transition-all">
             <h3 className="text-xl font-semibold text-white">Monthly</h3>
-            <p className="text-3xl font-bold text-blue-400 my-4">
+            <p className="text-3xl font-bold text-main-400 my-4">
               £3
               <span className="text-base font-normal text-gray-400">
                 /month
@@ -62,19 +62,19 @@ export function UpgradeModal({ onClose, token }: UpgradeModalProps) {
             </ul>
             <button
               onClick={() => handleSubscribe(MONTHLY_PRICE_ID)}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
+              className="w-full bg-main-600 hover:bg-main-700 text-white font-bold py-2 px-4 rounded transition-colors"
             >
               Choose Monthly
             </button>
           </div>
 
           {/* Yearly Plan */}
-          <div className="bg-gray-700 p-6 rounded-lg border-2 border-yellow-400 flex flex-col relative">
-            <div className="absolute top-0 right-4 -mt-4 bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+          <div className="bg-gray-700 p-6 rounded-lg border-2 border-accent-400 flex flex-col relative">
+            <div className="absolute top-0 right-4 -mt-4 bg-accent-300 text-black text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
               Best Value
             </div>
             <h3 className="text-xl font-semibold text-white">Yearly</h3>
-            <p className="text-3xl font-bold text-yellow-400 my-4">
+            <p className="text-3xl font-bold text-accent-300 my-4">
               £12
               <span className="text-base font-normal text-gray-400">/year</span>
             </p>
@@ -84,7 +84,7 @@ export function UpgradeModal({ onClose, token }: UpgradeModalProps) {
             </ul>
             <button
               onClick={() => handleSubscribe(YEARLY_PRICE_ID)}
-              className="w-full bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-2 px-4 rounded transition-colors"
+              className="w-full bg-accent-300 hover:bg-accent-400 text-black font-bold py-2 px-4 rounded transition-colors"
             >
               Choose Yearly
             </button>

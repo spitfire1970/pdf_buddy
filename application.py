@@ -367,7 +367,6 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_session)):
         db.commit()
     
     else:
-        # For all other events (invoice.paid, charge.succeeded, etc.), just acknowledge them.
         print(f"--- Ignoring unhandled event type: {event_type} ---")
 
     return Response(status_code=200)

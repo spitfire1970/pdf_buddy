@@ -3,15 +3,15 @@ import type { ChangeEvent, DragEvent } from "react";
 import axios from "axios";
 import { useAuth } from "../contexts/AuthContext";
 import { usePdf } from "../contexts/PdfContext";
-import { UpgradeModal } from "../components/UpgradeModal"; // Import the new modal
+import { UpgradeModal } from "../components/UpgradeModal";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL;
 
 export function Home() {
   const { user, logout, token, refreshUser } = useAuth();
   const { pdfs, setPdfs, selectPdf } = usePdf();
   const [isDragging, setIsDragging] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false); // State for the modal
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -158,7 +158,7 @@ export function Home() {
           >
             <svg
               aria-hidden="true"
-              className={`w-16 h-16 mb-4 transition-colors ${
+              className={`w-16 h-16 mb-4 transition-colors animate-pulse ${
                 isDragging
                   ? "text-accent-500"
                   : "text-accent-400 group-hover:text-accent-500"
