@@ -7,26 +7,25 @@ import "katex/dist/katex.min.css";
 import { usePdf } from "../contexts/PdfContext";
 import { useAuth } from "../contexts/AuthContext";
 import axios from "axios";
-import { Loader2 } from "lucide-react"; // for loading animation
+import { Loader2 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-// Interface for raw highlight object from context
 interface IHighlightObject {
   id: string;
   content: { text?: string; image?: string };
 }
-// Interface for cleaned up object
+
 interface CleanHighlight {
   id: string;
   type: "text" | "image";
   context: string;
 }
-// CHANGED: ChatMessage now includes an optional highlightId
+
 interface ChatMessage {
   role: "user" | "model";
   parts: string[];
-  highlightId?: string; // To link a message to a highlight
+  highlightId?: string;
 }
 
 function cleanUpObject(obj: IHighlightObject): CleanHighlight {
@@ -54,14 +53,13 @@ export function Sidebar() {
     setPendingHighlight,
   } = usePdf();
   const { token } = useAuth();
-
   const [view, setView] = useState<"list" | "chat">("list");
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string>("");
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [isStreaming, setIsStreaming] = useState(false); // NEW
+  const [isStreaming, setIsStreaming] = useState(false);
 
   const filtered_highlights = useMemo(
     () => highlights.map(cleanUpObject),
@@ -87,12 +85,8 @@ export function Sidebar() {
     fetchChats();
   }, [selectedPdfId, token]);
 
-  // conditionally starts a new chat.
   useEffect(() => {
-    // only trigger a new chat if a highlight was just made (pendingHighlight)
-    // AND we are in the "list" view.
     if (view === "list" && pendingHighlight) {
-      console.log("entering here", pendingHighlight.id);
       const newChatId = pendingHighlight.id;
       if (!chats[newChatId]) {
         setActiveChatId(newChatId);
@@ -101,19 +95,16 @@ export function Sidebar() {
       }
       setIncomplete(false);
     }
-  }, [pendingHighlight, chats, setIncomplete, setPendingHighlight]);
+  }, [pendingHighlight, chats, setIncomplete, setPendingHighlight, view]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chats, activeChatId]);
+  }, [chats, activeChatId, isStreaming]);
 
   useEffect(() => {
-    if (pendingHighlight) {
-      setTimeout(() => inputRef.current?.focus(), 0);
-    } else if (view === "chat") {
+    if (pendingHighlight || view === "chat") {
       setTimeout(() => inputRef.current?.focus(), 0);
     } else {
-      // when returning to the list, clear any pending highlight and reset the hash.
       setPendingHighlight(null);
       setIncomplete(false);
       history.replaceState(
@@ -122,7 +113,7 @@ export function Sidebar() {
         window.location.pathname + window.location.search,
       );
     }
-  }, [view, setPendingHighlight, pendingHighlight]);
+  }, [view, setPendingHighlight, pendingHighlight, setIncomplete]);
 
   const handleNewChat = () => {
     const newChatId = crypto.randomUUID();
@@ -136,8 +127,8 @@ export function Sidebar() {
     <a
       href={`#highlight-${highlightId}`}
       onClick={(e) => {
-        e.preventDefault(); // Prevent full page reload
-        window.location.hash = `highlight-${highlightId}`;
+        e.preventDefault();
+        window.location.hash = `#highlight-${highlightId}`;
       }}
       className="text-blue-600 hover:underline text-xs block mt-2"
     >
@@ -146,10 +137,10 @@ export function Sidebar() {
   );
 
   const handleSend = async () => {
-    if (!prompt.trim() || isStreaming) return; // design decision whether to allow sending pure context without prompt
     if (
+      !prompt.trim() || // design decision whether to allow sending pure context without prompt
+      isStreaming ||
       !activeChatId ||
-      (!prompt.trim() && !pendingHighlight) ||
       !token ||
       !selectedPdfId
     )
@@ -167,13 +158,10 @@ export function Sidebar() {
       highlightId: actual_highlight?.id,
     };
 
+    // **FIX 1: Only add the user's message. Do not add a "...thinking" message.**
     setChats((prev) => ({
       ...prev,
-      [activeChatId]: [
-        ...(prev[activeChatId] || []),
-        userMessage,
-        { role: "model", parts: ["...thinking"] },
-      ],
+      [activeChatId]: [...(prev[activeChatId] || []), userMessage],
     }));
 
     if (actual_highlight && actual_highlight.id) {
@@ -187,14 +175,12 @@ export function Sidebar() {
         console.error("Failed to save highlight:", error);
       }
     }
-
     setPendingHighlight(null);
 
     try {
       const sending_obj = actual_highlight
         ? cleanUpObject(actual_highlight)
         : null;
-
       const res = await fetch(API_URL + "/branched-chat/", {
         method: "POST",
         headers: {
@@ -228,29 +214,40 @@ export function Sidebar() {
 
         setChats((prev) => {
           const currentChat = prev[activeChatId] || [];
-          if (currentChat.length === 0) return prev;
-          const updatedLastMessage = {
-            ...currentChat[currentChat.length - 1],
-            parts: [completeText],
-          };
-          return {
-            ...prev,
-            [activeChatId]: [...currentChat.slice(0, -1), updatedLastMessage],
-          };
+          const lastMessage = currentChat[currentChat.length - 1];
+
+          if (lastMessage && lastMessage.role === "model") {
+            const updatedLastMessage = {
+              ...lastMessage,
+              parts: [completeText],
+            };
+            return {
+              ...prev,
+              [activeChatId]: [...currentChat.slice(0, -1), updatedLastMessage],
+            };
+          } else {
+            const newModelMessage: ChatMessage = {
+              role: "model",
+              parts: [completeText],
+            };
+            return {
+              ...prev,
+              [activeChatId]: [...currentChat, newModelMessage],
+            };
+          }
         });
       }
     } catch (e) {
       console.error(e);
       setChats((prev) => {
         const currentChat = prev[activeChatId] || [];
-        if (currentChat.length === 0) return prev;
-        const updatedLastMessage = {
-          ...currentChat[currentChat.length - 1],
+        const errorMessage: ChatMessage = {
+          role: "model",
           parts: ["Sorry, an error occurred. Please try again."],
         };
         return {
           ...prev,
-          [activeChatId]: [...currentChat.slice(0, -1), updatedLastMessage],
+          [activeChatId]: [...currentChat, errorMessage],
         };
       });
     } finally {
@@ -261,7 +258,6 @@ export function Sidebar() {
   return (
     <div className="w-full h-full flex flex-col overflow-hidden text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
       <style>{latexOverflowFix}</style>
-
       {view === "list" && (
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex justify-between items-center p-4">
@@ -309,7 +305,6 @@ export function Sidebar() {
           </div>
         </div>
       )}
-
       {view === "chat" && activeChatId && (
         <div className="flex flex-col flex-1 min-h-0">
           <div className="flex items-center justify-between gap-2 p-2 border-b bg-white">
@@ -345,7 +340,7 @@ export function Sidebar() {
                       rehypePlugins={[rehypeKatex]}
                       components={{ p: "span" }}
                     >
-                      {part === "...thinking" && isStreaming ? "..." : part}
+                      {part}
                     </ReactMarkdown>
                   ))}
                   {msg.role === "user" &&
@@ -422,7 +417,6 @@ export function Sidebar() {
           </div>
         </div>
       )}
-
       <div className="p-4 mt-auto border-t">
         <button
           type="button"
