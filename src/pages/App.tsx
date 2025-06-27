@@ -73,12 +73,10 @@ const AskInChatPopup = ({
   return (
     <div
       ref={popupRef}
-      className="bg-accent-300 p-1 rounded-md shadow-lg border border-accent-300 cursor-pointer"
+      onClick={onConfirm}
+      className="group bg-accent-500 p-1 border-1 border-accent-200 rounded-md shadow-lg hover:bg-accent-600 cursor-pointer"
     >
-      <button
-        onClick={onConfirm}
-        className="px-2 py-1 bg-accent-300 flex items-center text-accent-50 text-sm font-semibold rounded-md transition cursor-pointer"
-      >
+      <button className="flex items-center px-4 text-lg font-medium text-accent-50 bg-accent-500 rounded-lg group-hover:bg-accent-600 pointer-events-none">
         Ask in chat&nbsp;&nbsp;
         <kbd className="w-6 h-6 inline-flex items-center whitespace-nowrap rounded border border-gray-400 bg-gradient-to-b from-gray-200 to-gray-100 py-0.5 px-2 text-xs text-gray-800 shadow-sm">
           <a className="mw-selflink selflink">↵</a>

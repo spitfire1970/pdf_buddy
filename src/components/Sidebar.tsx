@@ -335,8 +335,8 @@ export function Sidebar() {
               })
             ) : (
               <p className="text-neutral-400 italic font-medium px-2 mt-4">
-                Highlight a section of the PDF to start a chat, or press the '+'
-                icon for a general chat.<br></br>
+                Highlight a section of the PDF to start a chat, or press the
+                'New Chat' button.<br></br>
                 <br></br>
                 At any point, add specific context to your chat by holding ⌥/alt
                 and selecting an area!

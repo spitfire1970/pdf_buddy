@@ -178,9 +178,12 @@ export function Home() {
             <span className="text-white text-lg font-semibold">
               {isDragging ? "Drop your PDF here" : "Open a new PDF"}
             </span>
-            <span className="text-sm text-gray-400 mt-1">
+            <span className="text-sm text-gray-400 mt-0">
               Click or drag a .pdf file
             </span>
+            {user?.subscription_tier == "free" && (
+              <span className="text-sm text-accent-50 mt-2">({pdfs.length}/3 free uploads used)</span>
+            )}
           </label>
 
           <input
