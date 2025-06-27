@@ -1,7 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 
-const MIN_WIDTH = 350;
+let MIN_WIDTH = 350;
 const MAX_WIDTH_PERCENTAGE = 0.7;
+
+if (document.documentElement.clientWidth < 500) {
+  MIN_WIDTH = 200;
+}
 
 export function useSidebarResizing(initialWidth: number) {
   const [sidebarWidth, setSidebarWidth] = useState(initialWidth);

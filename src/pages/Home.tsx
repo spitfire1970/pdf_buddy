@@ -111,10 +111,10 @@ export function Home() {
               <span className="text-accent-300">PDF</span>{" "}
               <span className="text-accent-50"> Buddy </span>
             </h1>
-            <h1 className="text-2xl md:text-3xl font-normal hidden sm:block">
-              Dashboard
-            </h1>
           </div>
+          <h1 className="text-2xl md:text-3xl font-normal hidden sm:block">
+            Dashboard
+          </h1>
 
           <div className="flex flex-col md:flex-row items-center justify-center gap-3">
             <div className="flex items-center gap-3">

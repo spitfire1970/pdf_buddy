@@ -99,7 +99,8 @@ export function App() {
     pendingHighlight,
     setPendingHighlight,
   } = usePdf();
-  const { sidebarWidth, handleMouseDown } = useSidebarResizing(400);
+  const min_width = document.documentElement.clientWidth < 500 ? 200 : 400;
+  const { sidebarWidth, handleMouseDown } = useSidebarResizing(min_width);
   const scrollViewerTo = useRef<(highlight: IHighlight) => void>(() => {});
 
   const [urlHash, setUrlHash] = useState(parseIdFromHash());
