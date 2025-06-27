@@ -74,11 +74,11 @@ const AskInChatPopup = ({
   return (
     <div
       ref={popupRef}
-      className="bg-accent p-1 rounded-md shadow-lg border border-black-300 cursor-pointer"
+      className="bg-accent-600 p-1 rounded-md shadow-lg border border-accent-300 cursor-pointer"
     >
       <button
         onClick={onConfirm}
-        className="px-2 py-1 bg-accent flex items-center text-black text-sm font-semibold rounded-md hover:bg-accent/90 transition cursor-pointer"
+        className="px-2 py-1 bg-accent-600 flex items-center text-accent-50 text-sm font-semibold rounded-md hover:bg-accent/90 transition cursor-pointer"
       >
         Ask in chat&nbsp;&nbsp;
         <kbd className="w-6 h-6 inline-flex items-center whitespace-nowrap rounded border border-gray-400 bg-gradient-to-b from-gray-200 to-gray-100 py-0.5 px-2 text-xs text-gray-800 shadow-sm">
@@ -252,7 +252,7 @@ export function App() {
       </div>
 
       <div
-        className="w-2 cursor-col-resize bg-gray-400 hover:bg-gray-500 transition-colors"
+        className="w-2 cursor-col-resize bg-accent-500 hover:bg-accent-600 transition-colors"
         onMouseDown={handleMouseDown}
         aria-label="Resize sidebar"
       />

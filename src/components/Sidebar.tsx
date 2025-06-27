@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { ArrowLeft, SendHorizonal, Plus, Paperclip, X } from "lucide-react";
+import {
+  ArrowLeft,
+  SendHorizonal,
+  Plus,
+  Paperclip,
+  X,
+  ArrowRight,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -36,10 +43,10 @@ function cleanUpObject(obj: IHighlightObject): CleanHighlight {
 }
 
 const latexOverflowFix = `.prose .katex-display {
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 0.5em 0.2em;
-  };`;
+     overflow-x: auto;
+     overflow-y: hidden;
+     padding: 0.5em 0.2em;
+   };`;
 
 export function Sidebar() {
   const {
@@ -123,14 +130,18 @@ export function Sidebar() {
     setPendingHighlight(null);
   };
 
-  const renderHighlightLink = (highlightId: string, statement: string) => (
+  const renderHighlightLink = (
+    highlightId: string,
+    statement: string,
+    className: string,
+  ) => (
     <a
       href={`#highlight-${highlightId}`}
       onClick={(e) => {
         e.preventDefault();
         window.location.hash = `#highlight-${highlightId}`;
       }}
-      className="text-blue-600 hover:underline text-xs block mt-2"
+      className={className}
     >
       {statement}
     </a>
@@ -138,7 +149,7 @@ export function Sidebar() {
 
   const handleSend = async () => {
     if (
-      !prompt.trim() || // design decision whether to allow sending pure context without prompt
+      !prompt.trim() ||
       isStreaming ||
       !activeChatId ||
       !token ||
@@ -158,7 +169,6 @@ export function Sidebar() {
       highlightId: actual_highlight?.id,
     };
 
-    // **FIX 1: Only add the user's message. Do not add a "...thinking" message.**
     setChats((prev) => ({
       ...prev,
       [activeChatId]: [...(prev[activeChatId] || []), userMessage],
@@ -256,16 +266,16 @@ export function Sidebar() {
   };
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden text-neutral-600 bg-gradient-to-b from-gray-100 to-gray-50">
+    <div className="w-full h-full flex flex-col overflow-hidden text-accent-50 bg-accent-950">
       <style>{latexOverflowFix}</style>
       {view === "list" && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex justify-between items-center p-4">
-            <h2 className="text-xl font-semibold">Chats</h2>
+          <div className="flex justify-between items-center p-4 border-b border-neutral-700">
+            <h2 className="text-xl font-semibold text-white">Chats</h2>
             <Plus
-              className="cursor-pointer text-neutral-500 hover:text-neutral-800"
+              className="cursor-pointer text-accent-400 hover:text-accent-200"
               onClick={handleNewChat}
-              size={24}
+              size={28}
             />
           </div>
           <div className="px-4 overflow-y-auto">
@@ -283,7 +293,7 @@ export function Sidebar() {
                 return (
                   <div
                     key={id}
-                    className="cursor-pointer border-b border-neutral-300 px-2 py-3 hover:bg-neutral-200"
+                    className="cursor-pointer border-b border-accent-800 px-2 py-3 hover:bg-accent-800 rounded-lg my-1"
                     onClick={() => {
                       setActiveChatId(id);
                       setView("chat");
@@ -294,7 +304,7 @@ export function Sidebar() {
                 );
               })
             ) : (
-              <p className="text-gray-500 italic px-2">
+              <p className="text-neutral-400 italic font-medium px-2 mt-4">
                 Highlight a section of the PDF to start a chat, or press the '+'
                 icon for a general chat.<br></br>
                 <br></br>
@@ -307,23 +317,36 @@ export function Sidebar() {
       )}
       {view === "chat" && activeChatId && (
         <div className="flex flex-col flex-1 min-h-0">
-          <div className="flex items-center justify-between gap-2 p-2 border-b bg-white">
+          <div className="flex items-center justify-between gap-2 p-2 border-b border-neutral-700 bg-accent-950">
             <div className="flex items-center gap-2">
               <ArrowLeft
-                className="cursor-pointer"
+                className="cursor-pointer text-accent-400 hover:text-accent-200"
                 onClick={() => setView("list")}
               />
-              <h3 className="text-lg font-medium">All Chats</h3>
+              <h3 className="text-lg font-medium text-accent-50">All Chats</h3>
             </div>
             <Plus
-              className="cursor-pointer text-neutral-500 hover:text-neutral-800 mr-2"
+              className="cursor-pointer text-accent-400 hover:text-accent-200 mr-2"
               onClick={handleNewChat}
-              size={24}
+              size={28}
             />
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-medium text-accent-50">
+                Back to Dashboard
+              </h3>
+              <ArrowRight
+                className="cursor-pointer text-accent-400 hover:text-accent-200"
+                onClick={() => {
+                  selectPdf(null);
+                  setIncomplete(false);
+                  setPendingHighlight(null);
+                }}
+              />
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
             {(chats[activeChatId] || []).length === 0 ? (
-              <p className="text-gray-500 italic px-2">
+              <p className="text-neutral-400 italic font-medium px-2">
                 At any point, add specific context to your chat by holding ⌥/alt
                 and selecting an area!
               </p>
@@ -331,7 +354,7 @@ export function Sidebar() {
               (chats[activeChatId] || []).map((msg, idx) => (
                 <div
                   key={idx}
-                  className={`p-3 rounded-lg max-w-[85%] whitespace-pre-wrap prose prose-sm break-words ${msg.role === "user" ? "bg-blue-100 ml-auto" : "bg-gray-200"}`}
+                  className={`p-3 rounded-lg max-w-[85%] whitespace-pre-wrap prose prose-sm break-words ${msg.role === "user" ? "bg-accent-700 ml-auto" : "bg-neutral-800"}`}
                 >
                   {msg.parts.map((part, i) => (
                     <ReactMarkdown
@@ -348,26 +371,30 @@ export function Sidebar() {
                     renderHighlightLink(
                       msg.highlightId,
                       "View Attached Context",
+                      "text-accent-200 hover:underline text-sm block mt-2",
                     )}
                 </div>
               ))
             )}
             {isStreaming && (
-              <div className="p-3 rounded-lg bg-gray-200 inline-flex items-center gap-2">
-                <Loader2 className="animate-spin w-4 h-4 text-gray-600" />
-                <span className="text-sm text-gray-600 italic">Thinking…</span>
+              <div className="p-3 rounded-lg bg-neutral-700 inline-flex items-center gap-2">
+                <Loader2 className="animate-spin w-4 h-4 text-accent-300" />
+                <span className="text-sm text-neutral-300 italic">
+                  Thinking…
+                </span>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
-          <div className="border-t p-2 bg-white">
+          <div className="border-t border-neutral-700 p-2 bg-accent-950">
             {pendingHighlight && (
-              <div className="flex items-center justify-between bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1.5 mb-2 rounded-md">
+              <div className="flex items-center justify-between bg-accent-900/50 text-accent-300 text-sm font-semibold px-3 py-1.5 mb-2 rounded-md">
                 <div className="flex justify-center items-center">
                   <Paperclip className="inline-block h-4 w-4 mr-2" />
                   {renderHighlightLink(
                     pendingHighlight.id,
-                    "Context from highlight attached.",
+                    "Context from highlight attached",
+                    "text-accent-300 hover:underline text-sm block",
                   )}
                 </div>
                 <button
@@ -377,17 +404,17 @@ export function Sidebar() {
                     );
                     setPendingHighlight(null);
                   }}
-                  className="text-blue-800 hover:text-blue-900"
+                  className="text-accent-300 hover:text-accent-100"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
             )}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mb-1">
               <textarea
                 ref={inputRef}
-                className="scrollbar scrollbar-thumb-red-500 scrollbar-track-accent flex-1 resize-none max-h-48 overflow-y-auto px-3 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-1 focus:ring-gray"
-                rows={1}
+                className="scrollbar scrollbar-thumb-main-500 scrollbar-track-neutral-800 flex-1 resize-none max-h-48 overflow-y-auto px-2 py-2 rounded-md border border-neutral-700 bg-accent-700 text-accent-50 focus:outline-none focus:ring-1 focus:ring-accent-200"
+                rows={2}
                 value={prompt}
                 onChange={(e) => {
                   setPrompt(e.target.value);
@@ -408,7 +435,7 @@ export function Sidebar() {
                 placeholder="Ask anything about the document"
               />
               <SendHorizonal
-                className={`text-accent cursor-pointer ml-2 ${isStreaming ? "opacity-50 cursor-not-allowed" : "hover:text-accent/80"}`}
+                className={`text-accent-400 cursor-pointer ml-2 mr-3 ${isStreaming ? "opacity-50 cursor-not-allowed" : "hover:text-accent-200"}`}
                 onClick={() => {
                   if (!isStreaming) handleSend();
                 }}
@@ -417,19 +444,21 @@ export function Sidebar() {
           </div>
         </div>
       )}
-      <div className="p-4 mt-auto border-t">
-        <button
-          type="button"
-          onClick={() => {
-            selectPdf(null);
-            setIncomplete(false);
-            setPendingHighlight(null);
-          }}
-          className="w-full px-4 py-2 text-white font-semibold bg-gray-600 rounded hover:bg-gray-700"
-        >
-          Back to Dashboard
-        </button>
-      </div>
+      {view == "list" &&
+        <div className="p-4 mt-auto border-t border-neutral-700">
+          <button
+            type="button"
+            onClick={() => {
+              selectPdf(null);
+              setIncomplete(false);
+              setPendingHighlight(null);
+            }}
+            className="w-full px-4 py-2 text-white font-semibold bg-accent-600 rounded-lg hover:bg-accent-700"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      }
     </div>
   );
 }

@@ -87,7 +87,6 @@ export function Home() {
     }
   };
 
-  // --- HANDLER FOR MANAGING SUBSCRIPTION ---
   const handleManageSubscription = async () => {
     if (!token) return;
     try {
@@ -104,37 +103,36 @@ export function Home() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-gray-900 text-white">
+    <div className="min-h-screen w-full bg-accent-950 text-white">
       {user && (
-        <header className="flex justify-between items-center p-4 border-b border-gray-700">
-          <h1 className="text-2xl font-bold">
-            <span className="text-blue-400">PDF</span> Buddy
+        <header className="flex justify-between items-center p-4 border-b border-accent-700">
+          <h1 className="text-3xl font-bold">
+            <span className="text-accent-300">PDF</span>{" "}
+            <span className="text-accent-50"> Buddy </span>
           </h1>
-          <h1 className="text-2xl font-normal">Dashboard</h1>
-          <div className="flex items-center">
+          <h1 className="text-3xl font-normal">Dashboard</h1>
+          <div className="flex items-center justify-center">
             <img
               src={user.picture}
               alt={user.name}
               referrerPolicy="no-referrer"
-              className="w-10 h-10 rounded-full mr-4 border-2 border-gray-600"
+              className="w-12 h-12 rounded-full mr-4 border-2 border-gray-600"
             />
-            {/* --- UPDATED: User Info and Subscription Status --- */}
             <div className="text-sm text-right mr-4">
               <span className="text-white font-medium block">{user.name}</span>
-              <span className="text-xs text-yellow-400 font-bold uppercase tracking-wider">
+              <span className="text-xs text-accent-300 font-bold uppercase tracking-wider">
                 {user.subscription_tier} Plan
               </span>
             </div>
-            {/* --- NEW: Manage Plan Button --- */}
             <button
               onClick={handleManageSubscription}
-              className="text-sm bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-md mr-4 transition-colors"
+              className="text-sm bg-accent-700 hover:bg-accent-600 text-white font-semibold py-2 px-4 rounded-md mr-4 transition-colors"
             >
               Manage Plan
             </button>
             <button
               onClick={logout}
-              className="text-sm text-gray-400 hover:text-white"
+              className="text-sm text-accent-100 hover:text-white"
             >
               Logout
             </button>
@@ -154,11 +152,29 @@ export function Home() {
             onDragLeave={() => setIsDragging(false)}
             className={`cursor-pointer group transition-all duration-300 flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg ${
               isDragging
-                ? "border-blue-500 bg-blue-500/10"
-                : "border-gray-600 hover:border-blue-500 hover:bg-blue-500/5"
+                ? "border-accent-500 bg-accent-500/10"
+                : "border-accent-600 hover:border-accent-500 hover:bg-accent-500/5"
             }`}
           >
-            {/* ... SVG Icon ... */}
+            <svg
+              aria-hidden="true"
+              className={`w-16 h-16 mb-4 transition-colors ${
+                isDragging
+                  ? "text-accent-500"
+                  : "text-accent-400 group-hover:text-accent-500"
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M7 10V9C7 6.23858 9.23858 4 12 4C14.7614 4 17 6.23858 17 9V10C19.2091 10 21 11.7909 21 14C21 15.4806 20.1956 16.8084 19 17.5M7 10C4.79086 10 3 11.7909 3 14C3 15.4806 3.8044 16.8084 5 17.5M7 10C7.43285 10 7.84965 10.0688 8.24006 10.1959M12 12V21M12 12L15 15M12 12L9 15"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
             <span className="text-white text-lg font-semibold">
               {isDragging ? "Drop your PDF here" : "Open a new PDF"}
             </span>
@@ -180,7 +196,7 @@ export function Home() {
             <div
               key={pdf.id}
               onClick={() => selectPdf(pdf.id)}
-              className="bg-gray-800 p-4 rounded-lg cursor-pointer hover:bg-gray-700 transition"
+              className="bg-accent-800 p-4 rounded-lg cursor-pointer hover:bg-accent-700 transition"
             >
               <h3 className="font-semibold truncate">{pdf.filename}</h3>
               <p className="text-sm text-gray-400">
@@ -191,7 +207,6 @@ export function Home() {
         </div>
       </main>
 
-      {/* --- RENDER THE UPGRADE MODAL CONDITIONALLY --- */}
       {showUpgradeModal && (
         <UpgradeModal
           onClose={() => setShowUpgradeModal(false)}

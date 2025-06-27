@@ -28,22 +28,19 @@
     "lint": "npx @biomejs/biome format --write ./src",
     "preview": "vite preview"
   },
-  "peerDependencies": {
-    "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
-  },
   "dependencies": {
     "@react-oauth/google": "^0.12.2",
     "@tailwindcss/vite": "^4.1.10",
     "axios": "^1.10.0",
+    "framer-motion": "^12.19.2",
     "jwt-decode": "^4.0.0",
     "katex": "^0.16.22",
     "lucide-react": "^0.515.0",
     "patch-package": "^8.0.0",
     "pdfjs-dist": "4.4.168",
     "postinstall-postinstall": "^2.1.0",
-    "react": ">=18.0.0",
-    "react-dom": ">=18.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-pdf-highlighter": "^8.0.0-rc.0",
     "react-rnd": "^10.4.11",

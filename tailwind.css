@@ -3,4 +3,32 @@
 @tailwind components;
 @tailwind utilities;
 
-@theme {  --color-main: #34ebb1;  --color-accent: #eda540;}
+/* @theme {  --color-main: #34ebb1;  --color-accent: #eda540;} */
+
+@theme {
+  --color-main-50: #ceffe0;
+  --color-main-100: #73ffb4;
+  --color-main-200: #00ec92;
+  --color-main-300: #00d080;
+  --color-main-400: #00b870;
+  --color-main-500: #009e60;
+  --color-main-600: #007d4b;
+  --color-main-700: #005d36;
+  --color-main-800: #004024;
+  --color-main-900: #002312;
+  --color-main-950: #00180a;
+}
+
+@theme {
+  --color-accent-50: #fef1e9;
+  --color-accent-100: #fce0ca;
+  --color-accent-200: #fac188;
+  --color-accent-300: #eda540;
+  --color-accent-400: #ca8c35;
+  --color-accent-500: #a5722a;
+  --color-accent-600: #855b20;
+  --color-accent-700: #634215;
+  --color-accent-800: #462e0c;
+  --color-accent-900: #281804;
+  --color-accent-950: #1a0f02;
+}
