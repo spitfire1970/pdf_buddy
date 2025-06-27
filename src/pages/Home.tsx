@@ -105,42 +105,53 @@ export function Home() {
   return (
     <div className="min-h-screen w-full bg-accent-950 text-white">
       {user && (
-        <header className="flex justify-between items-center p-4 border-b border-accent-700">
-          <h1 className="text-3xl font-bold">
-            <span className="text-accent-300">PDF</span>{" "}
-            <span className="text-accent-50"> Buddy </span>
-          </h1>
-          <h1 className="text-3xl font-normal">Dashboard</h1>
-          <div className="flex items-center justify-center">
-            <img
-              src={user.picture}
-              alt={user.name}
-              referrerPolicy="no-referrer"
-              className="w-12 h-12 rounded-full mr-4 border-2 border-gray-600"
-            />
-            <div className="text-sm text-right mr-4">
-              <span className="text-white font-medium block">{user.name}</span>
-              <span className="text-xs text-accent-300 font-bold uppercase tracking-wider">
-                {user.subscription_tier} Plan
-              </span>
+        <header className="flex flex-col md:flex-row md:justify-between items-center p-4 gap-4 border-b border-accent-700">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl md:text-3xl font-bold">
+              <span className="text-accent-300">PDF</span>{" "}
+              <span className="text-accent-50"> Buddy </span>
+            </h1>
+            <h1 className="text-2xl md:text-3xl font-normal hidden sm:block">
+              Dashboard
+            </h1>
+          </div>
+
+          <div className="flex flex-col md:flex-row items-center justify-center gap-3">
+            <div className="flex items-center gap-3">
+              <img
+                src={user.picture}
+                alt={user.name}
+                referrerPolicy="no-referrer"
+                className="w-12 h-12 rounded-full border-2 border-gray-600"
+              />
+              <div className="text-sm text-center md:text-right">
+                <span className="text-white font-medium block">
+                  {user.name}
+                </span>
+                <span className="text-xs text-accent-300 font-bold uppercase tracking-wider">
+                  {user.subscription_tier} Plan
+                </span>
+              </div>
             </div>
-            <button
-              onClick={handleManageSubscription}
-              className="text-sm bg-accent-700 hover:bg-accent-600 text-white font-semibold py-2 px-4 rounded-md mr-4 transition-colors"
-            >
-              Manage Plan
-            </button>
-            <button
-              onClick={logout}
-              className="text-sm text-accent-100 hover:text-white"
-            >
-              Logout
-            </button>
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <button
+                onClick={handleManageSubscription}
+                className="text-sm bg-accent-700 hover:bg-accent-600 text-white font-semibold py-2 px-4 rounded-md transition-colors w-full md:w-auto"
+              >
+                Manage Plan
+              </button>
+              <button
+                onClick={logout}
+                className="text-sm text-accent-100 hover:text-white"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </header>
       )}
 
-      <main className="p-8">
+      <main className="p-4 md:p-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <label
             htmlFor="pdf-upload"
@@ -175,14 +186,16 @@ export function Home() {
                 strokeLinejoin="round"
               />
             </svg>
-            <span className="text-white text-lg font-semibold">
+            <span className="text-white text-lg font-semibold text-center">
               {isDragging ? "Drop your PDF here" : "Open a new PDF"}
             </span>
-            <span className="text-sm text-gray-400 mt-0">
+            <span className="text-sm text-gray-400 mt-0 text-center">
               Click or drag a .pdf file
             </span>
             {user?.subscription_tier == "free" && (
-              <span className="text-sm text-accent-50 mt-2">({pdfs.length}/3 free uploads used)</span>
+              <span className="text-sm text-accent-50 mt-2">
+                ({pdfs.length}/3 free uploads used)
+              </span>
             )}
           </label>
 
