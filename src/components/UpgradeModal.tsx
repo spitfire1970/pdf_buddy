@@ -30,7 +30,7 @@ export function UpgradeModal({ onClose, token }: UpgradeModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 transition-opacity duration-300">
+    <div className="fixed inset-0 bg-black/50 bg-opacity-75 flex justify-center items-center z-50 transition-opacity duration-300">
       <div className="bg-gray-800 rounded-lg p-8 shadow-2xl max-w-2xl w-full transform scale-95 hover:scale-100 transition-transform duration-300">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-3xl font-bold text-white">Upgrade Your Plan</h2>

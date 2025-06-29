@@ -69,8 +69,8 @@ class PDF(SQLModel, table=True):
     pdf_bytes: bytes = Field(sa_column=Column(BYTEA))
     user_id: int = Field(foreign_key="user.id")
     user: "User" = Relationship(back_populates="pdfs")
-    chats: List["Chat"] = Relationship(back_populates="pdf")
-    highlights: List["Highlight"] = Relationship(back_populates="pdf")
+    chats: List["Chat"] = Relationship(back_populates="pdf", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    highlights: List["Highlight"] = Relationship(back_populates="pdf", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 # (Keep Chat and Highlight models as they were)
 class Highlight(SQLModel, table=True):
@@ -370,6 +370,22 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_session)):
         print(f"--- Ignoring unhandled event type: {event_type} ---")
 
     return Response(status_code=200)
+
+@app.delete("/pdfs/{pdf_id}", status_code=204)
+async def delete_pdf(
+    pdf_id: uuid.UUID,
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    pdf_to_delete = db.query(PDF).filter(PDF.id == pdf_id, PDF.user_id == current_user.id).first()
+
+    if not pdf_to_delete:
+        raise HTTPException(status_code=404, detail="PDF not found or you do not have permission to delete it.")
+
+    db.delete(pdf_to_delete)
+    db.commit()
+
+    return Response(status_code=204)
 
 @app.get("/pdfs/{pdf_id}")
 async def get_pdf_file(pdf_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_session)):
