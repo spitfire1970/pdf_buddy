@@ -16,3 +16,14 @@ BEGIN
     END LOOP;
 END $$;
 ```
+
+- pm2 + serve
+- npm run build
+- pm2 start serve --name "pdfbuddy-frontend" -- -s dist -l 3003
+- pm2 save
+- pm2 startup
+- pm2 stop pdfbuddy-frontend
+- pm2 list
+- pm2 describe pdfbuddy-frontend
+- pm2 delete pdfbuddy-frontend
+- pm2 restart pdfbuddy-frontend

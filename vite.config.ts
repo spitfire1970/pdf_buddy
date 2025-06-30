@@ -5,14 +5,23 @@ import { defineConfig } from "vite";
 export default defineConfig({
   build: {
     outDir: "dist",
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+        },
+      },
+    },
   },
   plugins: [react(), tailwindcss()],
   server: {
     port: 3003,
+    host: true,
     allowedHosts: ['pdf.nakul.one', 'pdfbuddy.site', 'www.pdfbuddy.site'] as any,
     watch: {
       ignored: [
-        '**/myenv/**', // Add this line to ignore the Python virtual environment
+        '**/myenv/**',
       ],
     },
   } as any,
