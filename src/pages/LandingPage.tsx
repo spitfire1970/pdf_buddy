@@ -101,6 +101,18 @@ export function LandingPage() {
 
         {/* Right side image - hidden on small screens */}
         <div className="hidden md:block w-full h-full">
+          <a
+            href="https://www.producthunt.com/products/pdf-buddy?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-pdf&#0045;buddy"
+            target="_blank"
+          >
+            <img
+              src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=986805&theme=light&t=1751407673371"
+              alt="PDF&#0032;Buddy - An&#0032;interactive&#0032;AI&#0045;powered&#0032;PDF&#0032;reader | Product Hunt"
+              style={{ width: "250px", height: " 54px" }}
+              width="250"
+              height="54"
+            />
+          </a>
           <img
             src="./bg.png"
             alt="Hero Visual"
