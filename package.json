@@ -23,6 +23,7 @@
     "postinstall": "patch-package",
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build_server": "NODE_OPTIONS=--max-old-space-size=4096 tsc -b && vite build",
     "start": "npm run build && serve -s dist",
     "watch": "tsc --noEmit --watch --project tsconfig.json",
     "lint": "npx @biomejs/biome format --write ./src",
