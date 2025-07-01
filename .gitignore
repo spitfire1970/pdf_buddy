@@ -4,6 +4,6 @@ myenv
 .env
 __pycache__
 *.log
-dist
+# dist
 .vite
 .DS_Store
