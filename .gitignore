@@ -2,6 +2,8 @@ node_modules
 myenv
 .github
 .env
+.env.development
+.env.production
 __pycache__
 *.log
 # dist
