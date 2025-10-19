@@ -31,7 +31,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 SECRET_KEY = os.getenv("GOOGLE_CLIENT_SECRET")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 1 day
-MODEL_NAME = "gemini-1.5-flash"
+MODEL_NAME = "gemini-2.5-flash"
 
 # --- Stripe Configuration ---
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
