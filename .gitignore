@@ -1,6 +1,5 @@
 node_modules
 myenv
-.github
 .env
 .env.development
 .env.production
