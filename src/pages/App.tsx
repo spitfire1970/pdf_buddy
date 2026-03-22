@@ -15,7 +15,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { usePdf } from "../contexts/PdfContext";
 import { useSidebarResizing } from "../hooks/useSidebarResizing";
 
-const API_URL = import.meta.env.VITE_API_URL;
+import { API_URL } from "../config";
 const parseIdFromHash = () =>
   document.location.hash.slice("#highlight-".length);
 const resetHash = () => {

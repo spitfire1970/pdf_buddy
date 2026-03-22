@@ -15,7 +15,7 @@ import { useAuth } from "../contexts/AuthContext";
 import axios from "axios";
 import { Loader2 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL;
+import { API_URL } from "../config";
 
 interface IHighlightObject {
   id: string;

@@ -5,7 +5,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { usePdf } from "../contexts/PdfContext";
 import { UpgradeModal } from "../components/UpgradeModal";
 
-const API_URL = import.meta.env.VITE_API_URL;
+import { API_URL } from "../config";
 
 export function Home() {
   const { user, logout, token, refreshUser } = useAuth();

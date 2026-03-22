@@ -1,0 +1,47 @@
+# Copy this file into your project repo and replace:
+#   - "myproject" (all occurrences) with your project name, e.g. "dashboard"
+#   - "myproject.nakul.one" with your actual subdomain
+#   - the port (3000) with whatever port your app listens on inside the container
+#
+# Workflow:
+#   1. Push code to GitHub
+#   2. GitHub Actions builds and pushes image to ghcr.io (set that up in your repo)
+#   3. SSH into the server and run:
+#        docker compose pull && docker compose up -d
+#   That's it — Traefik picks up the container and HTTPS is live within seconds.
+#
+# Notes:
+#   - You do NOT need to expose any ports to the host. Traefik reaches your app
+#     over the shared Docker network.
+#   - SSL certs are issued and renewed automatically by Traefik via Let's Encrypt.
+#   - For private ghcr.io images, run once on the server:
+#       docker login ghcr.io -u your-github-username -p your-github-pat
+#     (PAT needs read:packages scope — GitHub → Settings → Developer settings → Personal access tokens)
+
+services:
+  pdf_buddy:
+    image: ghcr.io/spitfire1970/pdf_buddy:latest
+    restart: unless-stopped
+    env_file:
+      - /srv/env/pdf_buddy.env  # replace "myproject" with your repo name
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      # Frontend (nginx on 3000) → pdfbuddy.site
+      - "traefik.http.routers.pdf_buddy.rule=Host(`pdfbuddy.nakul.one`) || Host(`pdfbuddy.site`) || Host(`www.pdfbuddy.site`)"
+      - "traefik.http.routers.pdf_buddy.entrypoints=websecure"
+      - "traefik.http.routers.pdf_buddy.tls=true"
+      - "traefik.http.routers.pdf_buddy.tls.certresolver=letsencrypt"
+      - "traefik.http.services.pdf_buddy.loadbalancer.server.port=3000"
+      # Backend (uvicorn on 8000) → api.pdf.nakul.one
+      - "traefik.http.routers.pdf_buddy_api.rule=Host(`api.pdf.nakul.one`)"
+      - "traefik.http.routers.pdf_buddy_api.entrypoints=websecure"
+      - "traefik.http.routers.pdf_buddy_api.tls=true"
+      - "traefik.http.routers.pdf_buddy_api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pdf_buddy_api.service=pdf_buddy_api"
+      - "traefik.http.services.pdf_buddy_api.loadbalancer.server.port=8000"
+
+networks:
+  web:
+    external: true  # Shared network created on first boot, Traefik is also on this

@@ -1,8 +1,5 @@
 import axios from "axios";
-
-const API_URL = import.meta.env.VITE_API_URL;
-const MONTHLY_PRICE_ID = import.meta.env.VITE_STRIPE_MONTHLY_PRICE_ID;
-const YEARLY_PRICE_ID = import.meta.env.VITE_STRIPE_YEARLY_PRICE_ID;
+import { API_URL, STRIPE_MONTHLY_PRICE_ID as MONTHLY_PRICE_ID, STRIPE_YEARLY_PRICE_ID as YEARLY_PRICE_ID } from "../config";
 
 interface UpgradeModalProps {
   onClose: () => void;

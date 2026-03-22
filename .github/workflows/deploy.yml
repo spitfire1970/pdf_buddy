@@ -1,0 +1,52 @@
+name: Build, push, and deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Log in to GitHub Container Registry — GITHUB_TOKEN is automatic, no secrets needed
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build and push the image — github.repository resolves to "owner/repo-name" automatically
+      - uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+
+      # Copy docker-compose.yml from the repo to the server
+      # This means you never need to manually place it — it stays in sync with the repo
+      # Requires two secrets (Settings → Secrets and variables → Actions):
+      #   SERVER_HOST    — your server's IP address
+      #   SERVER_SSH_KEY — contents of ~/.ssh/hetzner (run: cat ~/.ssh/hetzner)
+      - uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: docker-compose.yml
+          target: /srv/${{ github.event.repository.name }}
+
+      # SSH in and redeploy using the docker-compose.yml we just copied over
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /srv/${{ github.event.repository.name }}
+            docker compose pull
+            docker compose up -d
