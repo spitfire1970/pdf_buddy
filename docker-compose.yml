@@ -33,6 +33,7 @@ services:
       - "traefik.http.routers.pdf_buddy.entrypoints=websecure"
       - "traefik.http.routers.pdf_buddy.tls=true"
       - "traefik.http.routers.pdf_buddy.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pdf_buddy.service=pdf_buddy"
       - "traefik.http.services.pdf_buddy.loadbalancer.server.port=3000"
       # Backend (uvicorn on 8000) → api.pdf.nakul.one
       - "traefik.http.routers.pdf_buddy_api.rule=Host(`api.pdf.nakul.one`)"
