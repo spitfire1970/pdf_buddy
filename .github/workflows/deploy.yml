@@ -37,6 +37,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 2222
           source: docker-compose.yml
           target: /srv/${{ github.event.repository.name }}
 
@@ -46,6 +47,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 2222
           script: |
             cd /srv/${{ github.event.repository.name }}
             docker compose pull
