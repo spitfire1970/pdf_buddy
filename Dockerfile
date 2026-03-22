@@ -30,4 +30,4 @@ COPY nginx.conf /etc/nginx/sites-enabled/default
 # 3000 = frontend (nginx), 8000 = backend (uvicorn)
 EXPOSE 3000 8000
 
-CMD uvicorn application:app --host 0.0.0.0 --port 8000 & nginx -g "daemon off;"
+CMD ["sh", "-c", "uvicorn application:app --host 0.0.0.0 --port 8000 & nginx -g 'daemon off;'"]
