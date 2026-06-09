@@ -36,7 +36,7 @@
     "jwt-decode": "^4.0.0",
     "katex": "^0.16.22",
     "lucide-react": "^0.515.0",
-    "patch-package": "^8.0.0",
+    "patch-package": "^8.0.1",
     "pdfjs-dist": "4.4.168",
     "postinstall-postinstall": "^2.1.0",
     "react": "^18.3.1",
